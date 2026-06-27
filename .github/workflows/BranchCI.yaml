@@ -10,4 +10,4 @@ jobs:
     name: Branch CI
     uses: molssi-seamm/devops/.github/workflows/BranchCI.yaml@main
     with:
-      src : atomic_charge_step
+      src : atomic_charges_step
