@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: atomic_charges_step
-Version: 0+unknown
+Version: 2026.6.27+1.gcfb8ce2.dirty
 Summary: A SEAMM plug-in for computing atomic (partial) charges from a converged
 Home-page: https://github.com/molssi-seamm/atomic_charges_step
 Author: Paul Saxe
