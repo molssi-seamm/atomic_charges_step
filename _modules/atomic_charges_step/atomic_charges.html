@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.6.27.1 documentation</title>
+    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.6.28 documentation</title>
   
   
   
@@ -40,7 +40,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="../../_static/documentation_options.js?v=695ba30f"></script>
+    <script src="../../_static/documentation_options.js?v=0bba250d"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -52,7 +52,7 @@
     <link rel="search" title="Search" href="../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.6.27.1" />
+  <meta name="docsearch:version" content="2026.6.28" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -505,12 +505,19 @@
 <span class="sd">Status:</span>
 
 <span class="sd">* Molecular **DDEC6** via Chargemol from a Gaussian ``.wfx`` is implemented and</span>
-<span class="sd">  validated end-to-end (g09 -&gt; wfx -&gt; Chargemol -&gt; parse -&gt; store).</span>
-<span class="sd">* The density handoff (``_locate_density``) implements the Gaussian wfx case: the</span>
-<span class="sd">  Gaussian step writes ``&lt;job&gt;/&lt;step_no&gt;.wfx`` and this step reads the preceding</span>
-<span class="sd">  step&#39;s file. VASP CHGCAR/AECCAR and cube handling extend the same dict.</span>
-<span class="sd">* The **Bader** backend is still a stub (needs VASP-style CHGCAR/AECCAR or a cube</span>
-<span class="sd">  plus per-element valence-electron counts).</span>
+<span class="sd">  validated end-to-end (g09 -&gt; wfx -&gt; Chargemol -&gt; parse -&gt; store). ORCA feeds the</span>
+<span class="sd">  same path: its Energy substep writes ``orca.wfx`` via orca_2aim, validated</span>
+<span class="sd">  end-to-end (ORCA -&gt; wfx -&gt; Chargemol).</span>
+<span class="sd">* The density handoff (``_locate_density``) reads a ``.wfx`` from the preceding</span>
+<span class="sd">  step&#39;s directory (preferred), recognizing ``.cube`` as well. A uniform cube</span>
+<span class="sd">  cannot represent the all-electron core, so molecular cube input is rejected;</span>
+<span class="sd">  periodic CHGCAR/AECCAR support will come with VASP.</span>
+<span class="sd">* The **Bader** backend raises a clear NotImplementedError: the Henkelman code</span>
+<span class="sd">  reads a density grid (molecular cube or VASP CHGCAR/AECCAR), never a .wfx, and</span>
+<span class="sd">  molecular all-electron cubes hit the same core-cusp limit as cube-based DDEC6.</span>
+<span class="sd">  It will be implemented with periodic (VASP) support.</span>
+<span class="sd">* Citations: the DDEC6 (Manz &amp; Limas) and Bader (Henkelman group) methodology</span>
+<span class="sd">  papers are cited per the method actually run.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
@@ -711,18 +718,37 @@
                     <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_atoms</span><span class="si">}</span><span class="s2"> atoms.&quot;</span>
                 <span class="p">)</span>
 
+            <span class="c1"># Normalize to the known net charge, removing the small residual from</span>
+            <span class="c1"># grid / numerical integration (a uniform shift preserves the relative</span>
+            <span class="c1"># charges). The residual is reported so the shift is not hidden.</span>
+            <span class="n">target</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">configuration</span><span class="o">.</span><span class="n">charge</span><span class="p">)</span>
+            <span class="n">residual</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">charges</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="o">-</span> <span class="n">target</span>
+            <span class="k">if</span> <span class="n">P</span><span class="p">[</span><span class="s2">&quot;enforce net charge&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;yes&quot;</span> <span class="ow">and</span> <span class="n">n_atoms</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">charges</span> <span class="o">=</span> <span class="n">charges</span> <span class="o">-</span> <span class="n">residual</span> <span class="o">/</span> <span class="n">n_atoms</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cite_method</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+
             <span class="n">label</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_charge_label</span><span class="p">(</span><span class="n">P</span><span class="p">,</span> <span class="n">method</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_store_charges</span><span class="p">(</span><span class="n">configuration</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">charges</span><span class="p">)</span>
 
             <span class="n">net</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">charges</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
-            <span class="n">results</span><span class="p">[</span><span class="n">method</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;charges&quot;</span><span class="p">:</span> <span class="n">charges</span><span class="p">,</span> <span class="s2">&quot;net charge&quot;</span><span class="p">:</span> <span class="n">net</span><span class="p">}</span>
-            <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span>
-                <span class="n">__</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">: stored </span><span class="si">{</span><span class="n">n_atoms</span><span class="si">}</span><span class="s2"> charges as &#39;charges_</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot;(net charge </span><span class="si">{</span><span class="n">net</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> e).&quot;</span><span class="p">,</span>
-                    <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="s2">&quot; &quot;</span><span class="p">,</span>
-                <span class="p">)</span>
+            <span class="n">results</span><span class="p">[</span><span class="n">method</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;charges&quot;</span><span class="p">:</span> <span class="n">charges</span><span class="p">,</span>
+                <span class="s2">&quot;net charge&quot;</span><span class="p">:</span> <span class="n">net</span><span class="p">,</span>
+                <span class="s2">&quot;charge residual&quot;</span><span class="p">:</span> <span class="n">residual</span><span class="p">,</span>
+            <span class="p">}</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">: stored </span><span class="si">{</span><span class="n">n_atoms</span><span class="si">}</span><span class="s2"> charges as &#39;charges_</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(net charge </span><span class="si">{</span><span class="n">net</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2"> e).&quot;</span>
             <span class="p">)</span>
+            <span class="k">if</span> <span class="n">P</span><span class="p">[</span><span class="s2">&quot;enforce net charge&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;yes&quot;</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">+=</span> <span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot; Corrected a residual of </span><span class="si">{</span><span class="n">residual</span><span class="si">:</span><span class="s2">+.4f</span><span class="si">}</span><span class="s2"> e to match the &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;system charge of </span><span class="si">{</span><span class="n">target</span><span class="si">:</span><span class="s2">+.1f</span><span class="si">}</span><span class="s2"> e.&quot;</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; Residual vs. system charge: </span><span class="si">{</span><span class="n">residual</span><span class="si">:</span><span class="s2">+.4f</span><span class="si">}</span><span class="s2"> e.&quot;</span>
+            <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">__</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="s2">&quot; &quot;</span><span class="p">))</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_last_results</span> <span class="o">=</span> <span class="n">results</span>
 
@@ -731,6 +757,51 @@
 
         <span class="k">return</span> <span class="n">next_node</span></div>
 
+
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Citations</span>
+    <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="c1"># Per method: (bibtex key, citation level, note). The primary methodology</span>
+    <span class="c1"># paper is level 1; supporting algorithm papers are level 2.</span>
+    <span class="n">_CITATIONS</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;DDEC6&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s2">&quot;ddec6_part1&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;DDEC6 charge-partitioning theory and methodology.&quot;</span><span class="p">),</span>
+            <span class="p">(</span>
+                <span class="s2">&quot;ddec6_part2&quot;</span><span class="p">,</span>
+                <span class="mi">2</span><span class="p">,</span>
+                <span class="s2">&quot;DDEC6 validation across periodic and molecular systems.&quot;</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">],</span>
+        <span class="s2">&quot;Bader&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s2">&quot;bader_tang2009&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;Grid-based Bader analysis without lattice bias.&quot;</span><span class="p">),</span>
+            <span class="p">(</span>
+                <span class="s2">&quot;bader_henkelman2006&quot;</span><span class="p">,</span>
+                <span class="mi">2</span><span class="p">,</span>
+                <span class="s2">&quot;The original fast Bader decomposition algorithm.&quot;</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="p">(</span><span class="s2">&quot;bader_sanville2007&quot;</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="s2">&quot;Improved grid-based Bader charge allocation.&quot;</span><span class="p">),</span>
+            <span class="p">(</span>
+                <span class="s2">&quot;bader_yu2011&quot;</span><span class="p">,</span>
+                <span class="mi">2</span><span class="p">,</span>
+                <span class="s2">&quot;Weighted Bader integration (used with a reference density).&quot;</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">],</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_cite_method</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Cite the methodology papers for the charge method actually run.&quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">alias</span><span class="p">,</span> <span class="n">level</span><span class="p">,</span> <span class="n">note</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_CITATIONS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="p">[]):</span>
+            <span class="k">if</span> <span class="n">alias</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bibliography</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">references</span><span class="o">.</span><span class="n">cite</span><span class="p">(</span>
+                        <span class="n">raw</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_bibliography</span><span class="p">[</span><span class="n">alias</span><span class="p">],</span>
+                        <span class="n">alias</span><span class="o">=</span><span class="n">alias</span><span class="p">,</span>
+                        <span class="n">module</span><span class="o">=</span><span class="s2">&quot;atomic_charges_step&quot;</span><span class="p">,</span>
+                        <span class="n">level</span><span class="o">=</span><span class="n">level</span><span class="p">,</span>
+                        <span class="n">note</span><span class="o">=</span><span class="n">note</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not cite </span><span class="si">{</span><span class="n">alias</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="c1"># Charge storage</span>
@@ -772,23 +843,33 @@
 
 <span class="sd">        (VASP CHGCAR/AECCAR and cube handling will extend this dict&#39;s &quot;format&quot;.)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Density files we know how to hand to the backend, best first: an</span>
+        <span class="c1"># analytic Gaussian wavefunction (.wfx) is preferred over a grid cube.</span>
+        <span class="n">suffixes</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;.wfx&quot;</span><span class="p">:</span> <span class="s2">&quot;wfx&quot;</span><span class="p">,</span> <span class="s2">&quot;.cube&quot;</span><span class="p">:</span> <span class="s2">&quot;cube&quot;</span><span class="p">}</span>
+
         <span class="k">if</span> <span class="n">P</span><span class="p">[</span><span class="s2">&quot;density source&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;from files&quot;</span><span class="p">:</span>
             <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">P</span><span class="p">[</span><span class="s2">&quot;density files&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
             <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
-                <span class="n">wfx</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*.wfx&quot;</span><span class="p">))</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">wfx</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No .wfx file found in </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-                <span class="n">path</span> <span class="o">=</span> <span class="n">wfx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;.wfx&quot;</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;Expected a .wfx file for the molecular DDEC6 path, got </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span>
-                <span class="p">)</span>
-            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;wfx&quot;</span><span class="p">,</span> <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">path</span><span class="p">}</span>
+                <span class="n">found</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">))</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="n">suffixes</span>
+                <span class="p">]</span>
+                <span class="c1"># wfx ahead of cube</span>
+                <span class="n">found</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">suffixes</span><span class="p">)</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">()))</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">found</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;No .wfx or .cube density file found in </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="p">)</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="n">found</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">fmt</span> <span class="o">=</span> <span class="n">suffixes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">suffix</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">fmt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Expected a .wfx or .cube density file, got </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="n">fmt</span><span class="p">,</span> <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">path</span><span class="p">}</span>
 
-        <span class="c1"># From the previous step in the flowchart. The Gaussian step writes its</span>
-        <span class="c1"># wfx inside its own directory (its Energy substep renames the file to</span>
-        <span class="c1"># &lt;gaussian_dir&gt;/&lt;substep_no&gt;.wfx), so look in the previous node&#39;s</span>
-        <span class="c1"># directory for a .wfx (most recent if several).</span>
+        <span class="c1"># From the previous step in the flowchart. A molecular QM step writes its</span>
+        <span class="c1"># wavefunction inside its own directory tree: the Gaussian step renames</span>
+        <span class="c1"># its wavefunction to &lt;gaussian_dir&gt;/&lt;substep_no&gt;.wfx; the ORCA step</span>
+        <span class="c1"># writes orca.wfx (via orca_2aim) in its Energy substep directory. Look in</span>
+        <span class="c1"># the previous node&#39;s directory for a .wfx (or .cube), preferring .wfx.</span>
         <span class="n">prev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">previous</span><span class="p">()</span>
         <span class="n">search_dirs</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">if</span> <span class="n">prev</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">prev</span><span class="p">,</span> <span class="s2">&quot;_id&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -797,40 +878,56 @@
         <span class="n">search_dirs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">directory</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="p">)</span>
 
         <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">search_dirs</span><span class="p">:</span>
-            <span class="n">wfx_files</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="s2">&quot;*.wfx&quot;</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_mtime</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">wfx_files</span><span class="p">:</span>
-                <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;wfx&quot;</span><span class="p">,</span> <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">wfx_files</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]}</span>
+            <span class="k">for</span> <span class="n">suffix</span><span class="p">,</span> <span class="n">fmt</span> <span class="ow">in</span> <span class="n">suffixes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">files</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">rglob</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;*</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_mtime</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">files</span><span class="p">:</span>
+                    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="n">fmt</span><span class="p">,</span> <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">files</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]}</span>
 
         <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span>
-            <span class="s2">&quot;Could not find a wavefunction (.wfx) file from the preceding step &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;(looked in </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">search_dirs</span><span class="p">)</span><span class="si">}</span><span class="s2">). Enable &quot;</span>
-            <span class="s2">&quot;&#39;Write a wavefunction (wfx) file&#39; in the preceding Gaussian step so &quot;</span>
-            <span class="s2">&quot;this step has a density to partition.&quot;</span>
+            <span class="s2">&quot;Could not find an electron-density file (.wfx or .cube) from the &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;preceding step (looked in </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">search_dirs</span><span class="p">)</span><span class="si">}</span><span class="s2">). &quot;</span>
+            <span class="s2">&quot;Enable &#39;Write a wavefunction (wfx) file&#39; in a preceding Gaussian step, &quot;</span>
+            <span class="s2">&quot;or &#39;Write the electron-density cube&#39; in a preceding ORCA step, so this &quot;</span>
+            <span class="s2">&quot;step has a density to partition.&quot;</span>
         <span class="p">)</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="c1"># DDEC6 / Chargemol backend</span>
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_run_ddec6</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">,</span> <span class="n">density</span><span class="p">,</span> <span class="n">configuration</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run Chargemol to get DDEC6 charges. Returns a list of charges.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run Chargemol to get DDEC6 charges. Returns a list of charges.</span>
+
+<span class="sd">        Uses an analytic Gaussian wavefunction (.wfx). For molecular ORCA the</span>
+<span class="sd">        preceding step writes a .wfx via orca_2aim, mirroring Gaussian.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">density</span><span class="p">[</span><span class="s2">&quot;format&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;cube&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="s2">&quot;DDEC6 from a density cube is not supported: a uniform grid &quot;</span>
+                <span class="s2">&quot;cannot represent the all-electron core cusp, so Chargemol &quot;</span>
+                <span class="s2">&quot;rejects molecular all-electron cubes. For molecular ORCA, &quot;</span>
+                <span class="s2">&quot;enable &#39;Write the wavefunction (wfx) file&#39; in the preceding &quot;</span>
+                <span class="s2">&quot;ORCA step (it uses orca_2aim) so this step gets an analytic &quot;</span>
+                <span class="s2">&quot;.wfx. (Periodic CHGCAR/AECCAR support will come with VASP.)&quot;</span>
+            <span class="p">)</span>
         <span class="k">if</span> <span class="n">density</span><span class="p">[</span><span class="s2">&quot;format&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;wfx&quot;</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;The DDEC6 backend currently handles &#39;wfx&#39; input; got &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="n">density</span><span class="p">[</span><span class="s1">&#39;format&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&#39;. (VASP/cube support is planned.)&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;The DDEC6 backend handles &#39;wfx&#39; input; got &#39;</span><span class="si">{</span><span class="n">density</span><span class="p">[</span><span class="s1">&#39;format&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&#39;.&quot;</span>
             <span class="p">)</span>
 
         <span class="n">atomic_densities</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_atomic_densities_path</span><span class="p">(</span><span class="n">P</span><span class="p">)</span>
-        <span class="n">wfx</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">density</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">])</span>
+        <span class="n">src</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">density</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">])</span>
 
         <span class="c1"># Chargemol reads the density file named in job_control.txt from the run</span>
         <span class="c1"># directory, so place a copy there.</span>
         <span class="n">directory</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">directory</span><span class="p">)</span>
-        <span class="p">(</span><span class="n">directory</span> <span class="o">/</span> <span class="n">wfx</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">wfx</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">())</span>
+        <span class="p">(</span><span class="n">directory</span> <span class="o">/</span> <span class="n">src</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">())</span>
 
+        <span class="c1"># 3-periodic for a periodic configuration, molecular otherwise.</span>
+        <span class="n">periodic</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">configuration</span><span class="p">,</span> <span class="s2">&quot;periodicity&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span>
         <span class="n">job_control</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chargemol_job_control</span><span class="p">(</span>
-            <span class="n">input_filename</span><span class="o">=</span><span class="n">wfx</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">input_filename</span><span class="o">=</span><span class="n">src</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
             <span class="n">atomic_densities</span><span class="o">=</span><span class="n">atomic_densities</span><span class="p">,</span>
-            <span class="n">periodicity</span><span class="o">=</span><span class="p">(</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">),</span>
+            <span class="n">periodicity</span><span class="o">=</span><span class="p">(</span><span class="n">periodic</span><span class="p">,</span> <span class="n">periodic</span><span class="p">,</span> <span class="n">periodic</span><span class="p">),</span>
         <span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span>
@@ -908,30 +1005,23 @@
     <span class="c1"># Bader / Henkelman backend</span>
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_run_bader</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">,</span> <span class="n">density</span><span class="p">,</span> <span class="n">configuration</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run the Henkelman `bader` code. Returns a list of charges.&quot;&quot;&quot;</span>
-        <span class="c1"># The bader code reads a grid file (e.g. CHGCAR) and, for VASP, the</span>
-        <span class="c1"># reference all-electron density to reassign core charge:</span>
-        <span class="c1">#   bader CHGCAR -ref CHGCAR_sum</span>
-        <span class="c1"># where CHGCAR_sum = AECCAR0 + AECCAR2 (chgsum.pl). Net charge per atom is</span>
-        <span class="c1"># Z_valence - ACF column; converting to a partial charge needs the number</span>
-        <span class="c1"># of valence electrons per element (ZVAL), which is code/pseudopotential</span>
-        <span class="c1"># dependent -- another reason the density handoff must carry metadata.</span>
-        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_execute</span><span class="p">(</span>
-            <span class="n">section</span><span class="o">=</span><span class="s2">&quot;bader&quot;</span><span class="p">,</span>
-            <span class="n">cmd</span><span class="o">=</span><span class="p">[</span>
-                <span class="s2">&quot;</span><span class="si">{code}</span><span class="s2">&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;CHGCAR&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;-ref&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;CHGCAR_sum&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;&gt;&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;stdout.txt&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;2&gt;&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;stderr.txt&quot;</span><span class="p">,</span>
-            <span class="p">],</span>
-            <span class="n">files</span><span class="o">=</span><span class="p">{},</span>  <span class="c1"># SCAFFOLD: add located density files</span>
-            <span class="n">return_files</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;stdout.txt&quot;</span><span class="p">,</span> <span class="s2">&quot;stderr.txt&quot;</span><span class="p">,</span> <span class="s2">&quot;ACF.dat&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run the Henkelman `bader` code. Returns a list of charges.</span>
+
+<span class="sd">        Not yet implemented. The Henkelman code reads a density *grid* -- a</span>
+<span class="sd">        Gaussian cube for molecules, or VASP CHGCAR + AECCAR0/AECCAR2 for periodic</span>
+<span class="sd">        systems (``bader CHGCAR -ref CHGCAR_sum``) -- and never an analytic .wfx.</span>
+<span class="sd">        A molecular all-electron cube suffers the same core-cusp sampling problem</span>
+<span class="sd">        that rules out cube-based DDEC6, so Bader is the natural partner for</span>
+<span class="sd">        periodic (VASP) densities and will be implemented with that support. The</span>
+<span class="sd">        parse helper below sketches the ACF.dat handling for that work.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">&quot;Bader charges are not available yet. The Henkelman &#39;bader&#39; code &quot;</span>
+            <span class="s2">&quot;needs a density grid (a Gaussian cube for molecules, or VASP &quot;</span>
+            <span class="s2">&quot;CHGCAR/AECCAR for periodic systems); it cannot use the analytic &quot;</span>
+            <span class="s2">&quot;.wfx that the molecular path produces. Bader will be implemented &quot;</span>
+            <span class="s2">&quot;with periodic (VASP) support -- for molecular charges now, use DDEC6.&quot;</span>
         <span class="p">)</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_bader_charges</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">configuration</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_parse_bader_charges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">,</span> <span class="n">configuration</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse Bader charges from ACF.dat.</span>
@@ -1033,6 +1123,23 @@
 
         <span class="k">for</span> <span class="n">method</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
             <span class="n">charges</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s2">&quot;charges&quot;</span><span class="p">]</span>
+
+            <span class="c1"># Save the results the user selected in the Results tab (variables,</span>
+            <span class="c1"># tables, JSON). For several methods the generic keys hold the last</span>
+            <span class="c1"># one; the per-method labeled charge sets on the structure</span>
+            <span class="c1"># (charges_&lt;label&gt;) keep them distinct regardless.</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">store_results</span><span class="p">(</span>
+                    <span class="n">configuration</span><span class="o">=</span><span class="n">configuration</span><span class="p">,</span>
+                    <span class="n">data</span><span class="o">=</span><span class="p">{</span>
+                        <span class="s2">&quot;atomic charges&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">q</span><span class="p">)</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">charges</span><span class="p">],</span>
+                        <span class="s2">&quot;net charge&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;net charge&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;charge residual&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="s2">&quot;charge residual&quot;</span><span class="p">]),</span>
+                        <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span>
+                    <span class="p">},</span>
+                <span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not store results for </span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
             <span class="c1"># Always write the charges to a CSV file.</span>
             <span class="n">csv_path</span> <span class="o">=</span> <span class="n">directory</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;atomic_charges_</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">.csv&quot;</span>
