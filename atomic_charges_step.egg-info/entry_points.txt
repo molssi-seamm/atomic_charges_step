@@ -1,8 +1,0 @@
-[console_scripts]
-atomic-charges-step-installer = atomic_charges_step.__main__:run
-
-[org.molssi.seamm]
-Atomic Charges = atomic_charges_step:AtomicChargesStep
-
-[org.molssi.seamm.tk]
-Atomic Charges = atomic_charges_step:AtomicChargesStep

@@ -1,4 +1,4 @@
-* xtb_step version: 
+* atomic_charges_step version: 
 * Python version: 
 * Operating System: 
 
