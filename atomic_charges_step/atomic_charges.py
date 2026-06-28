@@ -12,12 +12,19 @@ several schemes can coexist on one structure.
 Status:
 
 * Molecular **DDEC6** via Chargemol from a Gaussian ``.wfx`` is implemented and
-  validated end-to-end (g09 -> wfx -> Chargemol -> parse -> store).
-* The density handoff (``_locate_density``) implements the Gaussian wfx case: the
-  Gaussian step writes ``<job>/<step_no>.wfx`` and this step reads the preceding
-  step's file. VASP CHGCAR/AECCAR and cube handling extend the same dict.
-* The **Bader** backend is still a stub (needs VASP-style CHGCAR/AECCAR or a cube
-  plus per-element valence-electron counts).
+  validated end-to-end (g09 -> wfx -> Chargemol -> parse -> store). ORCA feeds the
+  same path: its Energy substep writes ``orca.wfx`` via orca_2aim, validated
+  end-to-end (ORCA -> wfx -> Chargemol).
+* The density handoff (``_locate_density``) reads a ``.wfx`` from the preceding
+  step's directory (preferred), recognizing ``.cube`` as well. A uniform cube
+  cannot represent the all-electron core, so molecular cube input is rejected;
+  periodic CHGCAR/AECCAR support will come with VASP.
+* The **Bader** backend raises a clear NotImplementedError: the Henkelman code
+  reads a density grid (molecular cube or VASP CHGCAR/AECCAR), never a .wfx, and
+  molecular all-electron cubes hit the same core-cusp limit as cube-based DDEC6.
+  It will be implemented with periodic (VASP) support.
+* Citations: the DDEC6 (Manz & Limas) and Bader (Henkelman group) methodology
+  papers are cited per the method actually run.
 """
 
 import csv
@@ -208,18 +215,37 @@ class AtomicCharges(seamm.Node):
                     f"{n_atoms} atoms."
                 )
 
+            # Normalize to the known net charge, removing the small residual from
+            # grid / numerical integration (a uniform shift preserves the relative
+            # charges). The residual is reported so the shift is not hidden.
+            target = float(configuration.charge)
+            residual = float(charges.sum()) - target
+            if P["enforce net charge"] == "yes" and n_atoms > 0:
+                charges = charges - residual / n_atoms
+
+            self._cite_method(method)
+
             label = self._charge_label(P, method)
             self._store_charges(configuration, label, charges)
 
             net = float(charges.sum())
-            results[method] = {"charges": charges, "net charge": net}
-            printer.normal(
-                __(
-                    f"{method}: stored {n_atoms} charges as 'charges_{label}' "
-                    f"(net charge {net:.4f} e).",
-                    indent=self.indent + 4 * " ",
-                )
+            results[method] = {
+                "charges": charges,
+                "net charge": net,
+                "charge residual": residual,
+            }
+            msg = (
+                f"{method}: stored {n_atoms} charges as 'charges_{label}' "
+                f"(net charge {net:.4f} e)."
             )
+            if P["enforce net charge"] == "yes":
+                msg += (
+                    f" Corrected a residual of {residual:+.4f} e to match the "
+                    f"system charge of {target:+.1f} e."
+                )
+            else:
+                msg += f" Residual vs. system charge: {residual:+.4f} e."
+            printer.normal(__(msg, indent=self.indent + 4 * " "))
 
         self._last_results = results
 
@@ -227,6 +253,51 @@ class AtomicCharges(seamm.Node):
         self.analyze(P=P, results=results)
 
         return next_node
+
+    # ------------------------------------------------------------------
+    # Citations
+    # ------------------------------------------------------------------
+    # Per method: (bibtex key, citation level, note). The primary methodology
+    # paper is level 1; supporting algorithm papers are level 2.
+    _CITATIONS = {
+        "DDEC6": [
+            ("ddec6_part1", 1, "DDEC6 charge-partitioning theory and methodology."),
+            (
+                "ddec6_part2",
+                2,
+                "DDEC6 validation across periodic and molecular systems.",
+            ),
+        ],
+        "Bader": [
+            ("bader_tang2009", 1, "Grid-based Bader analysis without lattice bias."),
+            (
+                "bader_henkelman2006",
+                2,
+                "The original fast Bader decomposition algorithm.",
+            ),
+            ("bader_sanville2007", 2, "Improved grid-based Bader charge allocation."),
+            (
+                "bader_yu2011",
+                2,
+                "Weighted Bader integration (used with a reference density).",
+            ),
+        ],
+    }
+
+    def _cite_method(self, method):
+        """Cite the methodology papers for the charge method actually run."""
+        for alias, level, note in self._CITATIONS.get(method, []):
+            if alias in self._bibliography:
+                try:
+                    self.references.cite(
+                        raw=self._bibliography[alias],
+                        alias=alias,
+                        module="atomic_charges_step",
+                        level=level,
+                        note=note,
+                    )
+                except Exception as e:  # pragma: no cover
+                    logger.warning(f"Could not cite {alias}: {e}")
 
     # ------------------------------------------------------------------
     # Charge storage
@@ -268,23 +339,33 @@ class AtomicCharges(seamm.Node):
 
         (VASP CHGCAR/AECCAR and cube handling will extend this dict's "format".)
         """
+        # Density files we know how to hand to the backend, best first: an
+        # analytic Gaussian wavefunction (.wfx) is preferred over a grid cube.
+        suffixes = {".wfx": "wfx", ".cube": "cube"}
+
         if P["density source"] == "from files":
             path = Path(P["density files"]).expanduser()
             if path.is_dir():
-                wfx = sorted(path.glob("*.wfx"))
-                if not wfx:
-                    raise FileNotFoundError(f"No .wfx file found in {path}")
-                path = wfx[0]
-            if path.suffix.lower() != ".wfx":
-                raise ValueError(
-                    f"Expected a .wfx file for the molecular DDEC6 path, got {path}"
-                )
-            return {"format": "wfx", "path": path}
+                found = [
+                    p for p in sorted(path.glob("*")) if p.suffix.lower() in suffixes
+                ]
+                # wfx ahead of cube
+                found.sort(key=lambda p: list(suffixes).index(p.suffix.lower()))
+                if not found:
+                    raise FileNotFoundError(
+                        f"No .wfx or .cube density file found in {path}"
+                    )
+                path = found[0]
+            fmt = suffixes.get(path.suffix.lower())
+            if fmt is None:
+                raise ValueError(f"Expected a .wfx or .cube density file, got {path}")
+            return {"format": fmt, "path": path}
 
-        # From the previous step in the flowchart. The Gaussian step writes its
-        # wfx inside its own directory (its Energy substep renames the file to
-        # <gaussian_dir>/<substep_no>.wfx), so look in the previous node's
-        # directory for a .wfx (most recent if several).
+        # From the previous step in the flowchart. A molecular QM step writes its
+        # wavefunction inside its own directory tree: the Gaussian step renames
+        # its wavefunction to <gaussian_dir>/<substep_no>.wfx; the ORCA step
+        # writes orca.wfx (via orca_2aim) in its Energy substep directory. Look in
+        # the previous node's directory for a .wfx (or .cube), preferring .wfx.
         prev = self.previous()
         search_dirs = []
         if prev is not None and getattr(prev, "_id", None) is not None:
@@ -293,40 +374,56 @@ class AtomicCharges(seamm.Node):
         search_dirs.append(Path(self.directory).parent)
 
         for d in search_dirs:
-            wfx_files = sorted(d.rglob("*.wfx"), key=lambda p: p.stat().st_mtime)
-            if wfx_files:
-                return {"format": "wfx", "path": wfx_files[-1]}
+            for suffix, fmt in suffixes.items():
+                files = sorted(d.rglob(f"*{suffix}"), key=lambda p: p.stat().st_mtime)
+                if files:
+                    return {"format": fmt, "path": files[-1]}
 
         raise FileNotFoundError(
-            "Could not find a wavefunction (.wfx) file from the preceding step "
-            f"(looked in {', '.join(str(d) for d in search_dirs)}). Enable "
-            "'Write a wavefunction (wfx) file' in the preceding Gaussian step so "
-            "this step has a density to partition."
+            "Could not find an electron-density file (.wfx or .cube) from the "
+            f"preceding step (looked in {', '.join(str(d) for d in search_dirs)}). "
+            "Enable 'Write a wavefunction (wfx) file' in a preceding Gaussian step, "
+            "or 'Write the electron-density cube' in a preceding ORCA step, so this "
+            "step has a density to partition."
         )
 
     # ------------------------------------------------------------------
     # DDEC6 / Chargemol backend
     # ------------------------------------------------------------------
     def _run_ddec6(self, P, density, configuration):
-        """Run Chargemol to get DDEC6 charges. Returns a list of charges."""
+        """Run Chargemol to get DDEC6 charges. Returns a list of charges.
+
+        Uses an analytic Gaussian wavefunction (.wfx). For molecular ORCA the
+        preceding step writes a .wfx via orca_2aim, mirroring Gaussian.
+        """
+        if density["format"] == "cube":
+            raise NotImplementedError(
+                "DDEC6 from a density cube is not supported: a uniform grid "
+                "cannot represent the all-electron core cusp, so Chargemol "
+                "rejects molecular all-electron cubes. For molecular ORCA, "
+                "enable 'Write the wavefunction (wfx) file' in the preceding "
+                "ORCA step (it uses orca_2aim) so this step gets an analytic "
+                ".wfx. (Periodic CHGCAR/AECCAR support will come with VASP.)"
+            )
         if density["format"] != "wfx":
             raise NotImplementedError(
-                f"The DDEC6 backend currently handles 'wfx' input; got "
-                f"'{density['format']}'. (VASP/cube support is planned.)"
+                f"The DDEC6 backend handles 'wfx' input; got '{density['format']}'."
             )
 
         atomic_densities = self._atomic_densities_path(P)
-        wfx = Path(density["path"])
+        src = Path(density["path"])
 
         # Chargemol reads the density file named in job_control.txt from the run
         # directory, so place a copy there.
         directory = Path(self.directory)
-        (directory / wfx.name).write_bytes(wfx.read_bytes())
+        (directory / src.name).write_bytes(src.read_bytes())
 
+        # 3-periodic for a periodic configuration, molecular otherwise.
+        periodic = getattr(configuration, "periodicity", 0) == 3
         job_control = self._chargemol_job_control(
-            input_filename=wfx.name,
+            input_filename=src.name,
             atomic_densities=atomic_densities,
-            periodicity=(False, False, False),
+            periodicity=(periodic, periodic, periodic),
         )
 
         self._execute(
@@ -404,30 +501,23 @@ class AtomicCharges(seamm.Node):
     # Bader / Henkelman backend
     # ------------------------------------------------------------------
     def _run_bader(self, P, density, configuration):
-        """Run the Henkelman `bader` code. Returns a list of charges."""
-        # The bader code reads a grid file (e.g. CHGCAR) and, for VASP, the
-        # reference all-electron density to reassign core charge:
-        #   bader CHGCAR -ref CHGCAR_sum
-        # where CHGCAR_sum = AECCAR0 + AECCAR2 (chgsum.pl). Net charge per atom is
-        # Z_valence - ACF column; converting to a partial charge needs the number
-        # of valence electrons per element (ZVAL), which is code/pseudopotential
-        # dependent -- another reason the density handoff must carry metadata.
-        out = self._execute(
-            section="bader",
-            cmd=[
-                "{code}",
-                "CHGCAR",
-                "-ref",
-                "CHGCAR_sum",
-                ">",
-                "stdout.txt",
-                "2>",
-                "stderr.txt",
-            ],
-            files={},  # SCAFFOLD: add located density files
-            return_files=["stdout.txt", "stderr.txt", "ACF.dat"],
+        """Run the Henkelman `bader` code. Returns a list of charges.
+
+        Not yet implemented. The Henkelman code reads a density *grid* -- a
+        Gaussian cube for molecules, or VASP CHGCAR + AECCAR0/AECCAR2 for periodic
+        systems (``bader CHGCAR -ref CHGCAR_sum``) -- and never an analytic .wfx.
+        A molecular all-electron cube suffers the same core-cusp sampling problem
+        that rules out cube-based DDEC6, so Bader is the natural partner for
+        periodic (VASP) densities and will be implemented with that support. The
+        parse helper below sketches the ACF.dat handling for that work.
+        """
+        raise NotImplementedError(
+            "Bader charges are not available yet. The Henkelman 'bader' code "
+            "needs a density grid (a Gaussian cube for molecules, or VASP "
+            "CHGCAR/AECCAR for periodic systems); it cannot use the analytic "
+            ".wfx that the molecular path produces. Bader will be implemented "
+            "with periodic (VASP) support -- for molecular charges now, use DDEC6."
         )
-        return self._parse_bader_charges(out, configuration)
 
     def _parse_bader_charges(self, out, configuration):
         """Parse Bader charges from ACF.dat.
@@ -527,6 +617,23 @@ class AtomicCharges(seamm.Node):
 
         for method, data in results.items():
             charges = data["charges"]
+
+            # Save the results the user selected in the Results tab (variables,
+            # tables, JSON). For several methods the generic keys hold the last
+            # one; the per-method labeled charge sets on the structure
+            # (charges_<label>) keep them distinct regardless.
+            try:
+                self.store_results(
+                    configuration=configuration,
+                    data={
+                        "atomic charges": [float(q) for q in charges],
+                        "net charge": float(data["net charge"]),
+                        "charge residual": float(data["charge residual"]),
+                        "method": method,
+                    },
+                )
+            except Exception as e:  # pragma: no cover
+                logger.warning(f"Could not store results for {method}: {e}")
 
             # Always write the charges to a CSV file.
             csv_path = directory / f"atomic_charges_{method}.csv"

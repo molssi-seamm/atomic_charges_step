@@ -99,6 +99,20 @@ class AtomicChargesParameters(seamm.Parameters):
                 "Chargemol for DDEC6. Ignored for the Bader method."
             ),
         },
+        "enforce net charge": {
+            "default": "yes",
+            "kind": "enum",
+            "default_units": "",
+            "enumeration": ("yes", "no"),
+            "format_string": "",
+            "description": "Enforce the total charge:",
+            "help_text": (
+                "Shift the charges uniformly so they sum exactly to the known net "
+                "charge of the system, removing the small residual left by grid / "
+                "numerical integration. The residual is reported. Turn off to keep "
+                "the raw charges from the partitioning program."
+            ),
+        },
         "results": {
             "default": {},
             "kind": "dictionary",
