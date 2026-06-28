@@ -63,6 +63,13 @@ metadata["results"] = {
         "type": "float",
         "units": "e",
     },
+    "charge residual": {
+        "description": "Residual removed (raw sum minus the system charge) when "
+        "enforcing the net charge",
+        "dimensionality": "scalar",
+        "type": "float",
+        "units": "e",
+    },
     "method": {
         "description": "The charge-partitioning method used",
         "dimensionality": "scalar",

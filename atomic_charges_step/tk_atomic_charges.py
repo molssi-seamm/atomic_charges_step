@@ -66,7 +66,9 @@ class TkAtomicCharges(seamm.TkNode):
         --------
         TkAtomicCharges.reset_dialog
         """
-        frame = super().create_dialog(title="Atomic Charges")
+        frame = super().create_dialog(
+            title="Atomic Charges", widget="notebook", results_tab=True
+        )
 
         # Shortcut for parameters
         P = self.node.parameters
@@ -85,6 +87,22 @@ class TkAtomicCharges(seamm.TkNode):
 
         self.reset_dialog()
 
+    def _allowed_methods(self, source):
+        """The charge methods to offer given where the density comes from.
+
+        Bader (Henkelman) needs a density grid, so it is offered only for a
+        periodic (VASP) density from the previous step, or for explicit files
+        the user supplies. A molecular density from the previous step (ORCA,
+        Gaussian, ...) is an analytic .wfx, which only DDEC6 can use.
+        """
+        grid_methods = ("DDEC6", "Bader", "DDEC6 and Bader")
+        if "files" in source:
+            return grid_methods
+        previous = self.node.previous()
+        if previous is not None and "vasp_step" in type(previous).__module__.lower():
+            return grid_methods
+        return ("DDEC6",)
+
     def reset_dialog(self, widget=None):
         """Lay out the widgets, showing only those relevant to the choices.
 
@@ -97,8 +115,18 @@ class TkAtomicCharges(seamm.TkNode):
         for slave in frame.grid_slaves():
             slave.grid_forget()
 
-        method = self["method"].get()
         source = self["density source"].get()
+
+        # Offer Bader only when it can actually run: the Henkelman code needs a
+        # density grid. That means a periodic (VASP) density from the previous
+        # step, or explicit files the user supplies. For a molecular density from
+        # the previous step (ORCA, Gaussian, ...) only DDEC6 (from the .wfx) works.
+        methods = self._allowed_methods(source)
+        w = self["method"]
+        w.combobox.config(values=methods)
+        if w.get() not in methods:
+            w.set(methods[0])
+        method = w.get()
 
         row = 0
         self["method"].grid(row=row, column=0, columnspan=2, sticky=tk.EW)
@@ -121,9 +149,16 @@ class TkAtomicCharges(seamm.TkNode):
             )
             row += 1
 
+        self["enforce net charge"].grid(row=row, column=0, columnspan=2, sticky=tk.EW)
+        row += 1
+
         sw.align_labels(
             [self[k] for k in self.node.parameters if k[0] != "_" and k != "results"],
             sticky=tk.E,
         )
+
+        # Lay out the Results tab from the metadata (atomic charges, net charge,
+        # ...). Without this the Results tab is created but stays empty.
+        self.setup_results()
 
         return row
