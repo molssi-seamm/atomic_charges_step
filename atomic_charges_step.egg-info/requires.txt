@@ -1,7 +1,0 @@
-numpy
-seamm
-molsystem
-seamm-util
-seamm-widgets
-seamm-exec
-tabulate
