@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>History &#8212; SEAMM Atomic Charges Plug-in 2026.6.28 documentation</title>
+    <title>History &#8212; SEAMM Atomic Charges Plug-in 2026.6.29 documentation</title>
   
   
   
@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="_static/documentation_options.js?v=0bba250d"></script>
+    <script src="_static/documentation_options.js?v=afc2a114"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -54,7 +54,7 @@
     <link rel="prev" title="Development Team" href="authors.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.6.28" />
+  <meta name="docsearch:version" content="2026.6.29" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -510,6 +510,16 @@
   <section id="history">
 <h1>History<a class="headerlink" href="#history" title="Link to this heading">#</a></h1>
 <dl class="simple">
+<dt>2026.6.29 – Run Chargemol from a dedicated conda environment</dt><dd><ul class="simple">
+<li><p>The installer now creates a ‘seamm-chargemol’ conda environment containing
+Chargemol (for DDEC6), and the step runs Chargemol in that environment –
+no hand-built installation or PATH setup is needed. Run
+‘atomic-charges-step-installer install’ to set it up.</p></li>
+<li><p>The reference atomic densities are found automatically inside the
+seamm-chargemol environment; the ‘DDEC reference densities’ setting is now
+needed only to point at a different copy.</p></li>
+</ul>
+</dd>
 <dt>2026.6.28 – Citations, charge normalization, and GUI fixes</dt><dd><ul class="simple">
 <li><p>The DDEC6 (Manz &amp; Limas) and Bader (Henkelman) methodology papers are now
 cited for the charge method that is run.</p></li>

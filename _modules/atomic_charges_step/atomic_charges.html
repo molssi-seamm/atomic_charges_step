@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.6.28 documentation</title>
+    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.6.29 documentation</title>
   
   
   
@@ -40,7 +40,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
 
-    <script src="../../_static/documentation_options.js?v=0bba250d"></script>
+    <script src="../../_static/documentation_options.js?v=afc2a114"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -52,7 +52,7 @@
     <link rel="search" title="Search" href="../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.6.28" />
+  <meta name="docsearch:version" content="2026.6.29" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -520,12 +520,14 @@
 <span class="sd">  papers are cited per the method actually run.</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">configparser</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">importlib</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pprint</span>  <span class="c1"># noqa: F401</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">textwrap</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -535,7 +537,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">molsystem</span>  <span class="c1"># noqa: F401</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">seamm</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">seamm_exec</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">seamm_util</span><span class="w"> </span><span class="kn">import</span> <span class="n">ureg</span><span class="p">,</span> <span class="n">Q_</span>  <span class="c1"># noqa: F401</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">seamm_util</span><span class="w"> </span><span class="kn">import</span> <span class="n">ureg</span><span class="p">,</span> <span class="n">Q_</span><span class="p">,</span> <span class="n">Configuration</span>  <span class="c1"># noqa: F401</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">seamm_util.printing</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">printing</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">seamm_util.printing</span><span class="w"> </span><span class="kn">import</span> <span class="n">FormattedText</span> <span class="k">as</span> <span class="n">__</span>
 
@@ -944,13 +946,61 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_ddec6_charges</span><span class="p">(</span><span class="n">charge_file</span><span class="p">,</span> <span class="n">configuration</span><span class="o">.</span><span class="n">n_atoms</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_atomic_densities_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve the atomic-densities directory, expanding ~ and env vars.</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve the Chargemol atomic-densities directory.</span>
+
+<span class="sd">        Priority:</span>
+
+<span class="sd">        #. the configured path (parameter / seamm.ini) if it exists -- this lets</span>
+<span class="sd">           a user point at their own copy;</span>
+<span class="sd">        #. otherwise the copy bundled in the ``seamm-chargemol`` conda</span>
+<span class="sd">           environment (``&lt;prefix&gt;/share/chargemol/atomic_densities``), so DDEC6</span>
+<span class="sd">           works out-of-the-box after the installer runs;</span>
+<span class="sd">        #. otherwise the configured path as-is, so Chargemol reports a clear</span>
+<span class="sd">           &quot;could not find atomic densities&quot; if neither exists.</span>
 
 <span class="sd">        Note: a leading ``$`` is avoided in the default because SEAMM treats a</span>
 <span class="sd">        parameter value starting with ``$`` as a variable/expression to eval.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">raw</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expandvars</span><span class="p">(</span><span class="n">P</span><span class="p">[</span><span class="s2">&quot;atomic densities directory&quot;</span><span class="p">])</span>
-        <span class="k">return</span> <span class="n">Path</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+        <span class="n">configured</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">configured</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+            <span class="k">return</span> <span class="n">configured</span>
+
+        <span class="n">from_env</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conda_atomic_densities</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">from_env</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">from_env</span>
+
+        <span class="k">return</span> <span class="n">configured</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_conda_atomic_densities</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The atomic-densities directory bundled in the seamm-chargemol conda</span>
+<span class="sd">        environment (``&lt;prefix&gt;/share/chargemol/atomic_densities``), or ``None``</span>
+<span class="sd">        if Chargemol is not run from a conda environment or the data is absent.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">config</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_program_config</span><span class="p">(</span><span class="s2">&quot;chargemol&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># pragma: no cover - best-effort resolution</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not read the chargemol config: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;installation&quot;</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">&quot;conda&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="n">environment</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;conda-environment&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">conda</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;conda&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">environment</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="n">env_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">environment</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">env_path</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">()</span> <span class="ow">or</span> <span class="n">environment</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;~&quot;</span><span class="p">):</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="n">env_path</span>
+        <span class="k">elif</span> <span class="n">conda</span><span class="p">:</span>
+            <span class="c1"># &lt;base&gt;/condabin/conda or &lt;base&gt;/bin/conda -&gt; &lt;base&gt;/envs/&lt;name&gt;</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">conda</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;envs&quot;</span> <span class="o">/</span> <span class="n">environment</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="n">candidate</span> <span class="o">=</span> <span class="n">prefix</span> <span class="o">/</span> <span class="s2">&quot;share&quot;</span> <span class="o">/</span> <span class="s2">&quot;chargemol&quot;</span> <span class="o">/</span> <span class="s2">&quot;atomic_densities&quot;</span>
+        <span class="k">return</span> <span class="n">candidate</span> <span class="k">if</span> <span class="n">candidate</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_chargemol_job_control</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_filename</span><span class="p">,</span> <span class="n">atomic_densities</span><span class="p">,</span> <span class="n">periodicity</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Build Chargemol&#39;s job_control.txt contents for a (molecular) wfx run.</span>
@@ -1077,23 +1127,59 @@
         <span class="k">return</span> <span class="n">result</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_program_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">section</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve the executable configuration for a program section.</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve the executor configuration for the charge-analysis program.</span>
 
-<span class="sd">        SCAFFOLD: this should read &#39;&lt;root&gt;/atomic_charges.ini&#39; (created from the</span>
-<span class="sd">        default in data/ on first use) exactly as mopac_step reads &#39;mopac.ini&#39;,</span>
-<span class="sd">        returning the dict for the active executor type. For now it locates the</span>
-<span class="sd">        executable on PATH so the wiring can be exercised.</span>
+<span class="sd">        Reads ``&lt;root&gt;/atomic_charges.ini`` for the current executor type --</span>
+<span class="sd">        creating it from the packaged default on first use, with conda and the</span>
+<span class="sd">        ``seamm-chargemol`` environment filled in -- exactly as ``mopac_step``</span>
+<span class="sd">        reads ``mopac.ini``. The returned config tells the executor to run</span>
+<span class="sd">        Chargemol in its conda environment (``conda run -n seamm-chargemol ...``).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        section : str</span>
+<span class="sd">            The program name (e.g. ``&quot;chargemol&quot;``); used in error messages and</span>
+<span class="sd">            as the PATH fallback executable name.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+        <span class="n">executor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">flowchart</span><span class="o">.</span><span class="n">executor</span>
+        <span class="n">executor_type</span> <span class="o">=</span> <span class="n">executor</span><span class="o">.</span><span class="n">name</span>
 
-        <span class="n">exe</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;chargemol&quot;</span><span class="p">:</span> <span class="s2">&quot;Chargemol&quot;</span><span class="p">,</span> <span class="s2">&quot;bader&quot;</span><span class="p">:</span> <span class="s2">&quot;bader&quot;</span><span class="p">}</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">section</span><span class="p">,</span> <span class="n">section</span><span class="p">)</span>
-        <span class="n">path</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="n">exe</span><span class="p">)</span> <span class="ow">or</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="n">section</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Could not find the &#39;</span><span class="si">{</span><span class="n">exe</span><span class="si">}</span><span class="s2">&#39; executable for the &#39;</span><span class="si">{</span><span class="n">section</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
-                <span class="s2">&quot;method. Install it and/or register it in atomic_charges.ini.&quot;</span>
-            <span class="p">)</span>
-        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;code&quot;</span><span class="p">:</span> <span class="n">path</span><span class="p">,</span> <span class="s2">&quot;installation&quot;</span><span class="p">:</span> <span class="s2">&quot;local&quot;</span><span class="p">}</span>
+        <span class="n">ini_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">global_options</span><span class="p">[</span><span class="s2">&quot;root&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
+        <span class="c1"># The installer (InstallerBase) names this file after the section, so</span>
+        <span class="c1"># &#39;atomic-charges.ini&#39; (hyphen), matching mopac.ini&#39;s convention.</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">ini_dir</span> <span class="o">/</span> <span class="s2">&quot;atomic-charges.ini&quot;</span>
+
+        <span class="c1"># On first use, write the packaged default and fill in the conda details.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">resources</span> <span class="o">=</span> <span class="n">importlib</span><span class="o">.</span><span class="n">resources</span><span class="o">.</span><span class="n">files</span><span class="p">(</span><span class="s2">&quot;atomic_charges_step&quot;</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;data&quot;</span>
+            <span class="n">ini_text</span> <span class="o">=</span> <span class="p">(</span><span class="n">resources</span> <span class="o">/</span> <span class="s2">&quot;atomic-charges.ini&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span>
+            <span class="n">txt_config</span> <span class="o">=</span> <span class="n">Configuration</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="n">txt_config</span><span class="o">.</span><span class="n">from_string</span><span class="p">(</span><span class="n">ini_text</span><span class="p">)</span>
+            <span class="n">txt_config</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="s2">&quot;local&quot;</span><span class="p">,</span> <span class="s2">&quot;conda&quot;</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CONDA_EXE&quot;</span><span class="p">,</span> <span class="s2">&quot;conda&quot;</span><span class="p">))</span>
+            <span class="n">txt_config</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="s2">&quot;local&quot;</span><span class="p">,</span> <span class="s2">&quot;conda-environment&quot;</span><span class="p">,</span> <span class="s2">&quot;seamm-chargemol&quot;</span><span class="p">)</span>
+            <span class="n">txt_config</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+
+        <span class="n">full_config</span> <span class="o">=</span> <span class="n">configparser</span><span class="o">.</span><span class="n">ConfigParser</span><span class="p">()</span>
+        <span class="n">full_config</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+        <span class="c1"># If there is no section for this executor, fall back to an executable on</span>
+        <span class="c1"># the PATH (a &#39;local&#39; installation).</span>
+        <span class="k">if</span> <span class="n">executor_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">full_config</span><span class="p">:</span>
+            <span class="n">exe</span> <span class="o">=</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="n">section</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">exe</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;No &#39;</span><span class="si">{</span><span class="n">executor_type</span><span class="si">}</span><span class="s2">&#39; section in </span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2">, and &#39;</span><span class="si">{</span><span class="n">section</span><span class="si">}</span><span class="s2">&#39; is &quot;</span>
+                    <span class="s2">&quot;not on the PATH. Run &#39;atomic-charges-step-installer install&#39; &quot;</span>
+                    <span class="s2">&quot;to create the seamm-chargemol environment.&quot;</span>
+                <span class="p">)</span>
+            <span class="n">txt_config</span> <span class="o">=</span> <span class="n">Configuration</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+            <span class="n">txt_config</span><span class="o">.</span><span class="n">add_section</span><span class="p">(</span><span class="n">executor_type</span><span class="p">)</span>
+            <span class="n">txt_config</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="n">executor_type</span><span class="p">,</span> <span class="s2">&quot;installation&quot;</span><span class="p">,</span> <span class="s2">&quot;local&quot;</span><span class="p">)</span>
+            <span class="n">txt_config</span><span class="o">.</span><span class="n">set_value</span><span class="p">(</span><span class="n">executor_type</span><span class="p">,</span> <span class="s2">&quot;code&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">exe</span><span class="p">))</span>
+            <span class="n">txt_config</span><span class="o">.</span><span class="n">save</span><span class="p">()</span>
+            <span class="n">full_config</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">full_config</span><span class="o">.</span><span class="n">items</span><span class="p">(</span><span class="n">executor_type</span><span class="p">))</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
 <div class="viewcode-block" id="AtomicCharges.analyze">
