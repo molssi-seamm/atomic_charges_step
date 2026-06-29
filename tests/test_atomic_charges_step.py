@@ -3,6 +3,7 @@
 
 """Tests for the `atomic_charges_step` package."""
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,7 +13,26 @@ import pytest
 import atomic_charges_step
 
 DATA = Path(__file__).parent / "data"
-ATOMIC_DENSITIES = Path("~/SEAMM/atomic_charges/atomic_densities").expanduser()
+
+
+def _seamm_chargemol():
+    """Locate the seamm-chargemol conda env's chargemol + bundled densities.
+
+    Returns ``(conda_exe, atomic_densities_dir)`` if the environment is present
+    (so the end-to-end test can run), else ``None`` (so it skips -- e.g. in CI,
+    where the installer has not run).
+    """
+    conda = os.environ.get("CONDA_EXE") or shutil.which("conda")
+    if conda is None:
+        return None
+    prefix = Path(conda).resolve().parent.parent / "envs" / "seamm-chargemol"
+    densities = prefix / "share" / "chargemol" / "atomic_densities"
+    if (prefix / "bin" / "chargemol").is_file() and densities.is_dir():
+        return conda, densities
+    return None
+
+
+_CHARGEMOL = _seamm_chargemol()
 
 
 def test_factory_construction():
@@ -102,26 +122,33 @@ def test_locate_density_from_files():
 
 
 @pytest.mark.skipif(
-    shutil.which("Chargemol") is None or not ATOMIC_DENSITIES.is_dir(),
-    reason="Chargemol and/or its atomic_densities are not installed",
+    _CHARGEMOL is None,
+    reason="the seamm-chargemol conda environment is not installed",
 )
 def test_ddec6_water_end_to_end(tmp_path):
     """Full external chain: water wfx -> Chargemol -> parse -> DDEC6 charges.
 
-    Uses the committed B3LYP/6-31G** water wfx fixture, so it is reproducible
-    without Gaussian. Mirrors what AtomicCharges._run_ddec6 does.
+    Runs Chargemol in the seamm-chargemol conda environment (created by the
+    installer), with the densities bundled in that environment. Uses the
+    committed B3LYP/6-31G** water wfx fixture, so it is reproducible without
+    Gaussian. Mirrors what AtomicCharges._run_ddec6 does.
     """
+    conda, densities = _CHARGEMOL
     node = atomic_charges_step.AtomicCharges()
     shutil.copy(DATA / "water_b3lyp.wfx", tmp_path / "gaussian.wfx")
     (tmp_path / "job_control.txt").write_text(
         node._chargemol_job_control(
             input_filename="gaussian.wfx",
-            atomic_densities=str(ATOMIC_DENSITIES),
+            atomic_densities=str(densities),
             periodicity=(False, False, False),
         )
     )
     subprocess.run(
-        ["Chargemol"], cwd=tmp_path, capture_output=True, text=True, timeout=300
+        [conda, "run", "-n", "seamm-chargemol", "chargemol"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=300,
     )
     charge_file = tmp_path / "DDEC6_even_tempered_net_atomic_charges.xyz"
     charges = node._parse_ddec6_charges(charge_file, 3)

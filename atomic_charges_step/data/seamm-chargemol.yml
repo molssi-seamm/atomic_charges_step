@@ -1,0 +1,10 @@
+name: seamm-chargemol
+channels:
+  # Chargemol for osx-arm64 is currently provided from the 'paulsaxe' channel;
+  # once the conda-forge chargemol feedstock builds osx-arm64, conda-forge alone
+  # suffices and this channel can be dropped.
+  - paulsaxe
+  - conda-forge
+dependencies:
+  - python
+  - chargemol
