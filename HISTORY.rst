@@ -2,6 +2,15 @@
 History
 =======
 
+2026.6.29 -- Run Chargemol from a dedicated conda environment
+    * The installer now creates a 'seamm-chargemol' conda environment containing
+      Chargemol (for DDEC6), and the step runs Chargemol in that environment --
+      no hand-built installation or PATH setup is needed. Run
+      'atomic-charges-step-installer install' to set it up.
+    * The reference atomic densities are found automatically inside the
+      seamm-chargemol environment; the 'DDEC reference densities' setting is now
+      needed only to point at a different copy.
+
 2026.6.28 -- Citations, charge normalization, and GUI fixes
     * The DDEC6 (Manz & Limas) and Bader (Henkelman) methodology papers are now
       cited for the charge method that is run.

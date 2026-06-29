@@ -96,7 +96,9 @@ class AtomicChargesParameters(seamm.Parameters):
             "description": "DDEC reference densities:",
             "help_text": (
                 "Directory containing the reference atomic densities required by "
-                "Chargemol for DDEC6. Ignored for the Bader method."
+                "Chargemol for DDEC6. If this path does not exist, the copy "
+                "bundled in the seamm-chargemol conda environment is used "
+                "automatically. Ignored for the Bader method."
             ),
         },
         "enforce net charge": {

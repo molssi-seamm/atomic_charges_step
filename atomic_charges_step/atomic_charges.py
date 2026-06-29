@@ -27,12 +27,14 @@ Status:
   papers are cited per the method actually run.
 """
 
+import configparser
 import csv
 import importlib
 import logging
 import os
 from pathlib import Path
 import pprint  # noqa: F401
+import shutil
 import textwrap
 
 import numpy as np
@@ -42,7 +44,7 @@ import atomic_charges_step
 import molsystem  # noqa: F401
 import seamm
 import seamm_exec
-from seamm_util import ureg, Q_  # noqa: F401
+from seamm_util import ureg, Q_, Configuration  # noqa: F401
 import seamm_util.printing as printing
 from seamm_util.printing import FormattedText as __
 
@@ -440,13 +442,61 @@ class AtomicCharges(seamm.Node):
         return self._parse_ddec6_charges(charge_file, configuration.n_atoms)
 
     def _atomic_densities_path(self, P):
-        """Resolve the atomic-densities directory, expanding ~ and env vars.
+        """Resolve the Chargemol atomic-densities directory.
+
+        Priority:
+
+        #. the configured path (parameter / seamm.ini) if it exists -- this lets
+           a user point at their own copy;
+        #. otherwise the copy bundled in the ``seamm-chargemol`` conda
+           environment (``<prefix>/share/chargemol/atomic_densities``), so DDEC6
+           works out-of-the-box after the installer runs;
+        #. otherwise the configured path as-is, so Chargemol reports a clear
+           "could not find atomic densities" if neither exists.
 
         Note: a leading ``$`` is avoided in the default because SEAMM treats a
         parameter value starting with ``$`` as a variable/expression to eval.
         """
         raw = os.path.expandvars(P["atomic densities directory"])
-        return Path(raw).expanduser()
+        configured = Path(raw).expanduser()
+        if configured.is_dir():
+            return configured
+
+        from_env = self._conda_atomic_densities()
+        if from_env is not None:
+            return from_env
+
+        return configured
+
+    def _conda_atomic_densities(self):
+        """The atomic-densities directory bundled in the seamm-chargemol conda
+        environment (``<prefix>/share/chargemol/atomic_densities``), or ``None``
+        if Chargemol is not run from a conda environment or the data is absent.
+        """
+        try:
+            config = self._program_config("chargemol")
+        except Exception as e:  # pragma: no cover - best-effort resolution
+            logger.debug(f"Could not read the chargemol config: {e}")
+            return None
+        if config.get("installation") != "conda":
+            return None
+
+        environment = config.get("conda-environment", "")
+        conda = config.get("conda", "")
+        if not environment:
+            return None
+
+        env_path = Path(environment).expanduser()
+        if env_path.is_absolute() or environment.startswith("~"):
+            prefix = env_path
+        elif conda:
+            # <base>/condabin/conda or <base>/bin/conda -> <base>/envs/<name>
+            prefix = Path(conda).expanduser().parent.parent / "envs" / environment
+        else:
+            return None
+
+        candidate = prefix / "share" / "chargemol" / "atomic_densities"
+        return candidate if candidate.is_dir() else None
 
     def _chargemol_job_control(self, input_filename, atomic_densities, periodicity):
         """Build Chargemol's job_control.txt contents for a (molecular) wfx run.
@@ -573,23 +623,59 @@ class AtomicCharges(seamm.Node):
         return result
 
     def _program_config(self, section):
-        """Resolve the executable configuration for a program section.
+        """Resolve the executor configuration for the charge-analysis program.
 
-        SCAFFOLD: this should read '<root>/atomic_charges.ini' (created from the
-        default in data/ on first use) exactly as mopac_step reads 'mopac.ini',
-        returning the dict for the active executor type. For now it locates the
-        executable on PATH so the wiring can be exercised.
+        Reads ``<root>/atomic_charges.ini`` for the current executor type --
+        creating it from the packaged default on first use, with conda and the
+        ``seamm-chargemol`` environment filled in -- exactly as ``mopac_step``
+        reads ``mopac.ini``. The returned config tells the executor to run
+        Chargemol in its conda environment (``conda run -n seamm-chargemol ...``).
+
+        Parameters
+        ----------
+        section : str
+            The program name (e.g. ``"chargemol"``); used in error messages and
+            as the PATH fallback executable name.
         """
-        import shutil
+        executor = self.flowchart.executor
+        executor_type = executor.name
 
-        exe = {"chargemol": "Chargemol", "bader": "bader"}.get(section, section)
-        path = shutil.which(exe) or shutil.which(section)
-        if path is None:
-            raise RuntimeError(
-                f"Could not find the '{exe}' executable for the '{section}' "
-                "method. Install it and/or register it in atomic_charges.ini."
-            )
-        return {"code": path, "installation": "local"}
+        ini_dir = Path(self.global_options["root"]).expanduser()
+        # The installer (InstallerBase) names this file after the section, so
+        # 'atomic-charges.ini' (hyphen), matching mopac.ini's convention.
+        path = ini_dir / "atomic-charges.ini"
+
+        # On first use, write the packaged default and fill in the conda details.
+        if not path.exists():
+            resources = importlib.resources.files("atomic_charges_step") / "data"
+            ini_text = (resources / "atomic-charges.ini").read_text()
+            txt_config = Configuration(path)
+            txt_config.from_string(ini_text)
+            txt_config.set_value("local", "conda", os.environ.get("CONDA_EXE", "conda"))
+            txt_config.set_value("local", "conda-environment", "seamm-chargemol")
+            txt_config.save()
+
+        full_config = configparser.ConfigParser()
+        full_config.read(path)
+
+        # If there is no section for this executor, fall back to an executable on
+        # the PATH (a 'local' installation).
+        if executor_type not in full_config:
+            exe = shutil.which(section)
+            if exe is None:
+                raise RuntimeError(
+                    f"No '{executor_type}' section in {path}, and '{section}' is "
+                    "not on the PATH. Run 'atomic-charges-step-installer install' "
+                    "to create the seamm-chargemol environment."
+                )
+            txt_config = Configuration(path)
+            txt_config.add_section(executor_type)
+            txt_config.set_value(executor_type, "installation", "local")
+            txt_config.set_value(executor_type, "code", str(exe))
+            txt_config.save()
+            full_config.read(path)
+
+        return dict(full_config.items(executor_type))
 
     # ------------------------------------------------------------------
     def analyze(self, indent="", P=None, results=None, **kwargs):
