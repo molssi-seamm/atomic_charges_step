@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.6.29 documentation</title>
+    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.7.13 documentation</title>
   
   
   
@@ -26,8 +26,8 @@
   </noscript>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../../_static/styles/theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
-<link href="../../_static/styles/pydata-sphinx-theme.css?digest=a95f357e85573c9b56d5" rel="stylesheet" />
+  <link href="../../_static/styles/theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=90905a2f556bf617f1a9" rel="stylesheet" />
 
     <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
     <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -35,12 +35,12 @@
     <link rel="stylesheet" type="text/css" href="../../_static/css/custom.css?v=c224919a" />
   
   <!-- So that users can add custom icons -->
-  <script defer src="../../_static/scripts/fontawesome.js?digest=a95f357e85573c9b56d5"></script>
+  <script defer src="../../_static/scripts/fontawesome.js?digest=90905a2f556bf617f1a9"></script>
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5" />
-<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5" />
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../../_static/documentation_options.js?v=afc2a114"></script>
+    <script src="../../_static/documentation_options.js?v=a047d0be"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -52,7 +52,7 @@
     <link rel="search" title="Search" href="../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.6.29" />
+  <meta name="docsearch:version" content="2026.7.13" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -731,7 +731,10 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_cite_method</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
 
             <span class="n">label</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_charge_label</span><span class="p">(</span><span class="n">P</span><span class="p">,</span> <span class="n">method</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_store_charges</span><span class="p">(</span><span class="n">configuration</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">charges</span><span class="p">)</span>
+            <span class="n">apply_to_structure</span> <span class="o">=</span> <span class="n">P</span><span class="p">[</span><span class="s2">&quot;apply to structure&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;yes&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_store_charges</span><span class="p">(</span>
+                <span class="n">configuration</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">charges</span><span class="p">,</span> <span class="n">apply_to_structure</span><span class="o">=</span><span class="n">apply_to_structure</span>
+            <span class="p">)</span>
 
             <span class="n">net</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">charges</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
             <span class="n">results</span><span class="p">[</span><span class="n">method</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
@@ -750,6 +753,11 @@
                 <span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">msg</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; Residual vs. system charge: </span><span class="si">{</span><span class="n">residual</span><span class="si">:</span><span class="s2">+.4f</span><span class="si">}</span><span class="s2"> e.&quot;</span>
+            <span class="k">if</span> <span class="n">apply_to_structure</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">+=</span> <span class="p">(</span>
+                    <span class="s2">&quot; Also set them as the atomic charges on the structure &quot;</span>
+                    <span class="s2">&quot;(the &#39;charge&#39; attribute).&quot;</span>
+                <span class="p">)</span>
             <span class="n">printer</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">__</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">indent</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="s2">&quot; &quot;</span><span class="p">))</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_last_results</span> <span class="o">=</span> <span class="n">results</span>
@@ -815,19 +823,31 @@
             <span class="k">return</span> <span class="n">method</span>
         <span class="k">return</span> <span class="n">label</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_store_charges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">configuration</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">charges</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_store_charges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">configuration</span><span class="p">,</span> <span class="n">label</span><span class="p">,</span> <span class="n">charges</span><span class="p">,</span> <span class="n">apply_to_structure</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Write a labeled charge set onto the atoms.</span>
 
 <span class="sd">        Mirrors the ``charges_&lt;label&gt;`` pattern in ``seamm_ff_util/forcefield.py``:</span>
 <span class="sd">        a configuration-dependent float attribute, one column per scheme, so DDEC6,</span>
 <span class="sd">        Bader, etc. coexist rather than overwriting a single &#39;charge&#39; column.</span>
+
+<span class="sd">        When ``apply_to_structure`` is set, the charges are ALSO written to the</span>
+<span class="sd">        structure&#39;s standard per-atom ``charge`` attribute, so they travel with</span>
+<span class="sd">        the structure -- e.g. when writing an extended-XYZ file for ML training.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;charges_</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span>
         <span class="n">atoms</span> <span class="o">=</span> <span class="n">configuration</span><span class="o">.</span><span class="n">atoms</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;charges_</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">&quot;</span>
         <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">atoms</span><span class="p">:</span>
             <span class="n">atoms</span><span class="o">.</span><span class="n">add_attribute</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">coltype</span><span class="o">=</span><span class="s2">&quot;float&quot;</span><span class="p">,</span> <span class="n">configuration_dependent</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">atoms</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="mi">0</span><span class="p">:]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">charges</span><span class="p">)</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Set column &#39;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&#39; to the charges&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">apply_to_structure</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s2">&quot;charge&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">atoms</span><span class="p">:</span>
+                <span class="n">atoms</span><span class="o">.</span><span class="n">add_attribute</span><span class="p">(</span>
+                    <span class="s2">&quot;charge&quot;</span><span class="p">,</span> <span class="n">coltype</span><span class="o">=</span><span class="s2">&quot;float&quot;</span><span class="p">,</span> <span class="n">configuration_dependent</span><span class="o">=</span><span class="kc">True</span>
+                <span class="p">)</span>
+            <span class="n">atoms</span><span class="p">[</span><span class="s2">&quot;charge&quot;</span><span class="p">][</span><span class="mi">0</span><span class="p">:]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">charges</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Also set the standard &#39;charge&#39; column on the structure&quot;</span><span class="p">)</span>
 
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="c1"># Density handoff (SCAFFOLD -- see module docstring)</span>
@@ -1288,8 +1308,8 @@
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script defer src="../../_static/scripts/bootstrap.js?digest=a95f357e85573c9b56d5"></script>
-<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=a95f357e85573c9b56d5"></script>
+  <script defer src="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9"></script>
 
   <footer class="bd-footer">
 <div class="bd-footer__inner bd-page-width">
@@ -1301,7 +1321,7 @@
         <div class="footer-item">
 <p class="theme-version">
   <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
-  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.19.0.
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.20.0.
 </p></div>
       
     </div>
