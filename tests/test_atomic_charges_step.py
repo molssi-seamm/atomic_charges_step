@@ -81,6 +81,46 @@ def test_charge_label_resolution():
     assert node._charge_label({"charge label": "pbe0"}, "Bader") == "pbe0"
 
 
+class _FakeAtoms(dict):
+    """Minimal stand-in for molsystem atoms: dict of columns + add_attribute."""
+
+    def __init__(self, n):
+        super().__init__()
+        self._n = n
+
+    def add_attribute(self, key, coltype=None, configuration_dependent=None):
+        self[key] = [0.0] * self._n
+
+
+class _FakeConfig:
+    def __init__(self, n):
+        self.atoms = _FakeAtoms(n)
+
+
+def test_apply_to_structure_default_off():
+    """The new option defaults to off."""
+    P = atomic_charges_step.AtomicChargesParameters()
+    assert P["apply to structure"].value == "no"
+
+
+def test_store_charges_labeled_only():
+    """Without apply_to_structure only the labeled column is written."""
+    node = atomic_charges_step.AtomicCharges()
+    cfg = _FakeConfig(3)
+    node._store_charges(cfg, "DDEC6", [-0.8, 0.4, 0.4])
+    assert cfg.atoms["charges_DDEC6"] == [-0.8, 0.4, 0.4]
+    assert "charge" not in cfg.atoms
+
+
+def test_store_charges_apply_to_structure():
+    """With apply_to_structure the standard 'charge' column is set too."""
+    node = atomic_charges_step.AtomicCharges()
+    cfg = _FakeConfig(3)
+    node._store_charges(cfg, "DDEC6", [-0.8, 0.4, 0.4], apply_to_structure=True)
+    assert cfg.atoms["charges_DDEC6"] == [-0.8, 0.4, 0.4]
+    assert cfg.atoms["charge"] == [-0.8, 0.4, 0.4]
+
+
 def test_chargemol_job_control():
     """The molecular wfx job_control has the right tags and a trailing slash."""
     node = atomic_charges_step.AtomicCharges()

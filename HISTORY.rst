@@ -2,6 +2,13 @@
 History
 =======
 
+2026.7.13 -- Option to set the charges on the structure
+    * New **Set as the atomic charges on the structure** option (default off).
+      When on, the computed charges are also written to the structure's standard
+      per-atom ``charge`` attribute (in addition to the labeled ``charges_<label>``
+      column), so they travel with the structure -- e.g. to write them to an
+      extended-XYZ (extxyz) file for machine-learning training.
+
 2026.6.29 -- Run Chargemol from a dedicated conda environment
     * The installer now creates a 'seamm-chargemol' conda environment containing
       Chargemol (for DDEC6), and the step runs Chargemol in that environment --

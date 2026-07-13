@@ -152,6 +152,9 @@ class TkAtomicCharges(seamm.TkNode):
         self["enforce net charge"].grid(row=row, column=0, columnspan=2, sticky=tk.EW)
         row += 1
 
+        self["apply to structure"].grid(row=row, column=0, columnspan=2, sticky=tk.EW)
+        row += 1
+
         sw.align_labels(
             [self[k] for k in self.node.parameters if k[0] != "_" and k != "results"],
             sticky=tk.E,

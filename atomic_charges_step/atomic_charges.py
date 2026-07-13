@@ -228,7 +228,10 @@ class AtomicCharges(seamm.Node):
             self._cite_method(method)
 
             label = self._charge_label(P, method)
-            self._store_charges(configuration, label, charges)
+            apply_to_structure = P["apply to structure"] == "yes"
+            self._store_charges(
+                configuration, label, charges, apply_to_structure=apply_to_structure
+            )
 
             net = float(charges.sum())
             results[method] = {
@@ -247,6 +250,11 @@ class AtomicCharges(seamm.Node):
                 )
             else:
                 msg += f" Residual vs. system charge: {residual:+.4f} e."
+            if apply_to_structure:
+                msg += (
+                    " Also set them as the atomic charges on the structure "
+                    "(the 'charge' attribute)."
+                )
             printer.normal(__(msg, indent=self.indent + 4 * " "))
 
         self._last_results = results
@@ -311,19 +319,31 @@ class AtomicCharges(seamm.Node):
             return method
         return label
 
-    def _store_charges(self, configuration, label, charges):
+    def _store_charges(self, configuration, label, charges, apply_to_structure=False):
         """Write a labeled charge set onto the atoms.
 
         Mirrors the ``charges_<label>`` pattern in ``seamm_ff_util/forcefield.py``:
         a configuration-dependent float attribute, one column per scheme, so DDEC6,
         Bader, etc. coexist rather than overwriting a single 'charge' column.
+
+        When ``apply_to_structure`` is set, the charges are ALSO written to the
+        structure's standard per-atom ``charge`` attribute, so they travel with
+        the structure -- e.g. when writing an extended-XYZ file for ML training.
         """
-        key = f"charges_{label}"
         atoms = configuration.atoms
+        key = f"charges_{label}"
         if key not in atoms:
             atoms.add_attribute(key, coltype="float", configuration_dependent=True)
         atoms[key][0:] = list(charges)
         logger.debug(f"Set column '{key}' to the charges")
+
+        if apply_to_structure:
+            if "charge" not in atoms:
+                atoms.add_attribute(
+                    "charge", coltype="float", configuration_dependent=True
+                )
+            atoms["charge"][0:] = list(charges)
+            logger.debug("Also set the standard 'charge' column on the structure")
 
     # ------------------------------------------------------------------
     # Density handoff (SCAFFOLD -- see module docstring)

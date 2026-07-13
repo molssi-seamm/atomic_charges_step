@@ -115,6 +115,22 @@ class AtomicChargesParameters(seamm.Parameters):
                 "the raw charges from the partitioning program."
             ),
         },
+        "apply to structure": {
+            "default": "no",
+            "kind": "enum",
+            "default_units": "",
+            "enumeration": ("no", "yes"),
+            "format_string": "",
+            "description": "Set as the atomic charges on the structure:",
+            "help_text": (
+                "Also store the computed charges as the structure's per-atom "
+                "charge (the standard 'charge' attribute), in addition to the "
+                "labeled 'charges_<label>' column. Turn this on to have the "
+                "charges written out with the structure -- e.g. to an extended "
+                "XYZ (extxyz) file for machine-learning training. With more than "
+                "one charge method, the last one applied wins."
+            ),
+        },
         "results": {
             "default": {},
             "kind": "dictionary",
