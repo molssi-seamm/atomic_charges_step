@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.7.13 documentation</title>
+    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.7.13.1 documentation</title>
   
   
   
@@ -40,7 +40,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../../_static/documentation_options.js?v=a047d0be"></script>
+    <script src="../../_static/documentation_options.js?v=dd775c9e"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -52,7 +52,7 @@
     <link rel="search" title="Search" href="../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.7.13" />
+  <meta name="docsearch:version" content="2026.7.13.1" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -528,6 +528,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pprint</span>  <span class="c1"># noqa: F401</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">textwrap</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -944,6 +945,10 @@
         <span class="n">directory</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">directory</span><span class="p">)</span>
         <span class="p">(</span><span class="n">directory</span> <span class="o">/</span> <span class="n">src</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">())</span>
 
+        <span class="c1"># Chargemol writes its actual log to &#39;&lt;input-stem&gt;.output&#39; (NOT stdout,</span>
+        <span class="c1"># which stays empty), so capture that too for diagnostics.</span>
+        <span class="n">log_name</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">with_suffix</span><span class="p">(</span><span class="s2">&quot;.output&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">name</span>
+
         <span class="c1"># 3-periodic for a periodic configuration, molecular otherwise.</span>
         <span class="n">periodic</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">configuration</span><span class="p">,</span> <span class="s2">&quot;periodicity&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span>
         <span class="n">job_control</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chargemol_job_control</span><span class="p">(</span>
@@ -959,11 +964,45 @@
             <span class="n">return_files</span><span class="o">=</span><span class="p">[</span>
                 <span class="s2">&quot;stdout.txt&quot;</span><span class="p">,</span>
                 <span class="s2">&quot;stderr.txt&quot;</span><span class="p">,</span>
+                <span class="n">log_name</span><span class="p">,</span>
                 <span class="s2">&quot;DDEC6_even_tempered_net_atomic_charges.xyz&quot;</span><span class="p">,</span>
             <span class="p">],</span>
         <span class="p">)</span>
         <span class="n">charge_file</span> <span class="o">=</span> <span class="n">directory</span> <span class="o">/</span> <span class="s2">&quot;DDEC6_even_tempered_net_atomic_charges.xyz&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">charge_file</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_chargemol_failure_message</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">log_name</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parse_ddec6_charges</span><span class="p">(</span><span class="n">charge_file</span><span class="p">,</span> <span class="n">configuration</span><span class="o">.</span><span class="n">n_atoms</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_chargemol_failure_message</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">log_name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;A diagnostic message when Chargemol produced no DDEC6 charges.</span>
+
+<span class="sd">        Chargemol writes its real log to ``&lt;input-stem&gt;.output`` (stdout stays</span>
+<span class="sd">        empty), so quote the end of that file (and stderr) rather than pointing</span>
+<span class="sd">        at the empty stdout.txt.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">directory</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span>
+        <span class="n">parts</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">&quot;Chargemol ran but did not produce &quot;</span>
+            <span class="s2">&quot;DDEC6_even_tempered_net_atomic_charges.xyz (the DDEC6 charges).&quot;</span>
+        <span class="p">]</span>
+        <span class="n">log</span> <span class="o">=</span> <span class="n">directory</span> <span class="o">/</span> <span class="n">log_name</span>
+        <span class="k">if</span> <span class="n">log</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">tail</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">log</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()[</span><span class="o">-</span><span class="mi">25</span><span class="p">:])</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+            <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;End of Chargemol&#39;s log (</span><span class="si">{</span><span class="n">log_name</span><span class="si">}</span><span class="s2">):</span><span class="se">\n</span><span class="si">{</span><span class="n">tail</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Chargemol wrote no log (</span><span class="si">{</span><span class="n">log_name</span><span class="si">}</span><span class="s2">), so it likely failed to &quot;</span>
+                <span class="s2">&quot;start -- check the atomic-densities directory path in &quot;</span>
+                <span class="s2">&quot;job_control.txt and that the .wfx is valid.&quot;</span>
+            <span class="p">)</span>
+        <span class="n">err</span> <span class="o">=</span> <span class="n">directory</span> <span class="o">/</span> <span class="s2">&quot;stderr.txt&quot;</span>
+        <span class="k">if</span> <span class="n">err</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="n">err</span><span class="o">.</span><span class="n">read_text</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+            <span class="c1"># The bare IEEE_UNDERFLOW/DENORMAL note is normal Fortran-exit noise.</span>
+            <span class="k">if</span> <span class="n">text</span> <span class="ow">and</span> <span class="s2">&quot;IEEE_&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">text</span><span class="p">:</span>
+                <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;stderr:</span><span class="se">\n</span><span class="si">{</span><span class="n">text</span><span class="p">[</span><span class="o">-</span><span class="mi">1000</span><span class="p">:]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_atomic_densities_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Resolve the Chargemol atomic-densities directory.</span>
@@ -983,7 +1022,11 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">raw</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">expandvars</span><span class="p">(</span><span class="n">P</span><span class="p">[</span><span class="s2">&quot;atomic densities directory&quot;</span><span class="p">])</span>
         <span class="n">configured</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">configured</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+        <span class="c1"># Require the directory to actually contain DDEC6 reference densities</span>
+        <span class="c1"># (c2_*.txt), not merely exist: an empty/incomplete directory makes</span>
+        <span class="c1"># Chargemol start and then die with &quot;Could not find a suitable reference</span>
+        <span class="c1"># density&quot;. If it is incomplete, prefer the complete conda-bundled set.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_has_ddec6_densities</span><span class="p">(</span><span class="n">configured</span><span class="p">):</span>
             <span class="k">return</span> <span class="n">configured</span>
 
         <span class="n">from_env</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conda_atomic_densities</span><span class="p">()</span>
@@ -991,6 +1034,14 @@
             <span class="k">return</span> <span class="n">from_env</span>
 
         <span class="k">return</span> <span class="n">configured</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_has_ddec6_densities</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Whether `path` is a directory holding DDEC6 reference densities.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span> <span class="ow">and</span> <span class="nb">next</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;c2_*.txt&quot;</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_conda_atomic_densities</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;The atomic-densities directory bundled in the seamm-chargemol conda</span>
@@ -1010,17 +1061,42 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="n">environment</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
 
+        <span class="k">for</span> <span class="n">prefix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_conda_env_prefixes</span><span class="p">(</span><span class="n">conda</span><span class="p">,</span> <span class="n">environment</span><span class="p">):</span>
+            <span class="n">candidate</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;share&quot;</span> <span class="o">/</span> <span class="s2">&quot;chargemol&quot;</span> <span class="o">/</span> <span class="s2">&quot;atomic_densities&quot;</span>
+            <span class="k">if</span> <span class="n">candidate</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+                <span class="k">return</span> <span class="n">candidate</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_conda_env_prefixes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conda</span><span class="p">,</span> <span class="n">environment</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Candidate filesystem prefixes for the conda environment, in order.</span>
+
+<span class="sd">        First the cheap guess from the layout ``&lt;base&gt;/envs/&lt;name&gt;`` (or the</span>
+<span class="sd">        environment itself if it is already an absolute path). Then, so it works</span>
+<span class="sd">        on non-standard/HPC conda layouts where that guess is wrong, ask the</span>
+<span class="sd">        *same* conda that launches Chargemol for the environment&#39;s real prefix</span>
+<span class="sd">        (``CONDA_PREFIX``); since that conda successfully runs Chargemol, this is</span>
+<span class="sd">        guaranteed to resolve to the right place.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">env_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">environment</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">env_path</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">()</span> <span class="ow">or</span> <span class="n">environment</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;~&quot;</span><span class="p">):</span>
-            <span class="n">prefix</span> <span class="o">=</span> <span class="n">env_path</span>
-        <span class="k">elif</span> <span class="n">conda</span><span class="p">:</span>
-            <span class="c1"># &lt;base&gt;/condabin/conda or &lt;base&gt;/bin/conda -&gt; &lt;base&gt;/envs/&lt;name&gt;</span>
-            <span class="n">prefix</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">conda</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;envs&quot;</span> <span class="o">/</span> <span class="n">environment</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">yield</span> <span class="n">env_path</span>
+            <span class="k">return</span>
 
-        <span class="n">candidate</span> <span class="o">=</span> <span class="n">prefix</span> <span class="o">/</span> <span class="s2">&quot;share&quot;</span> <span class="o">/</span> <span class="s2">&quot;chargemol&quot;</span> <span class="o">/</span> <span class="s2">&quot;atomic_densities&quot;</span>
-        <span class="k">return</span> <span class="n">candidate</span> <span class="k">if</span> <span class="n">candidate</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">conda</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">Path</span><span class="p">(</span><span class="n">conda</span><span class="p">)</span><span class="o">.</span><span class="n">expanduser</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;envs&quot;</span> <span class="o">/</span> <span class="n">environment</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+                    <span class="p">[</span><span class="n">conda</span><span class="p">,</span> <span class="s2">&quot;run&quot;</span><span class="p">,</span> <span class="s2">&quot;-n&quot;</span><span class="p">,</span> <span class="n">environment</span><span class="p">,</span> <span class="s2">&quot;printenv&quot;</span><span class="p">,</span> <span class="s2">&quot;CONDA_PREFIX&quot;</span><span class="p">],</span>
+                    <span class="n">capture_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="n">timeout</span><span class="o">=</span><span class="mi">120</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">prefix</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">returncode</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">prefix</span><span class="p">:</span>
+                    <span class="k">yield</span> <span class="n">Path</span><span class="p">(</span><span class="n">prefix</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c1"># pragma: no cover - best-effort resolution</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not ask conda for the env prefix: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_chargemol_job_control</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_filename</span><span class="p">,</span> <span class="n">atomic_densities</span><span class="p">,</span> <span class="n">periodicity</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Build Chargemol&#39;s job_control.txt contents for a (molecular) wfx run.</span>

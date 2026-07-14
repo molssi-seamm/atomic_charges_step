@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>History &#8212; SEAMM Atomic Charges Plug-in 2026.7.13 documentation</title>
+    <title>History &#8212; SEAMM Atomic Charges Plug-in 2026.7.13.1 documentation</title>
   
   
   
@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="_static/documentation_options.js?v=a047d0be"></script>
+    <script src="_static/documentation_options.js?v=dd775c9e"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -54,7 +54,7 @@
     <link rel="prev" title="Development Team" href="authors.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.7.13" />
+  <meta name="docsearch:version" content="2026.7.13.1" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -511,6 +511,22 @@
   <section id="history">
 <h1>History<a class="headerlink" href="#history" title="Link to this heading">#</a></h1>
 <dl class="simple">
+<dt>2026.7.13.1 – Bugfix: clearer Chargemol failures; skip incomplete densities</dt><dd><ul class="simple">
+<li><p>When Chargemol fails to produce charges, the error now quotes its real log
+(<code class="docutils literal notranslate"><span class="pre">&lt;input&gt;.output</span></code>) instead of the empty <code class="docutils literal notranslate"><span class="pre">stdout.txt</span></code> – so causes like
+“Could not find a suitable reference density” are shown directly. Chargemol
+writes its diagnostics to that log, not to stdout.</p></li>
+<li><p>The atomic-densities directory is now used only if it actually contains the
+DDEC6 reference densities (<code class="docutils literal notranslate"><span class="pre">c2_*.txt</span></code>); an empty or incomplete directory
+is skipped in favor of the complete set bundled in the seamm-chargemol conda
+environment. This avoids a silent Chargemol failure when the configured
+directory exists but is not populated.</p></li>
+<li><p>The bundled densities are now located by asking conda for the environment’s
+actual prefix, not by deriving it from the conda executable’s path. This
+fixes non-standard/HPC conda layouts where the derivation was wrong, so the
+densities silently were not found and DDEC6 failed.</p></li>
+</ul>
+</dd>
 <dt>2026.7.13 – Option to set the charges on the structure</dt><dd><ul class="simple">
 <li><p>New <strong>Set as the atomic charges on the structure</strong> option (default off).
 When on, the computed charges are also written to the structure’s standard
