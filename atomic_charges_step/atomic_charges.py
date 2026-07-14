@@ -35,6 +35,7 @@ import os
 from pathlib import Path
 import pprint  # noqa: F401
 import shutil
+import subprocess
 import textwrap
 
 import numpy as np
@@ -556,17 +557,42 @@ class AtomicCharges(seamm.Node):
         if not environment:
             return None
 
+        for prefix in self._conda_env_prefixes(conda, environment):
+            candidate = Path(prefix) / "share" / "chargemol" / "atomic_densities"
+            if candidate.is_dir():
+                return candidate
+        return None
+
+    def _conda_env_prefixes(self, conda, environment):
+        """Candidate filesystem prefixes for the conda environment, in order.
+
+        First the cheap guess from the layout ``<base>/envs/<name>`` (or the
+        environment itself if it is already an absolute path). Then, so it works
+        on non-standard/HPC conda layouts where that guess is wrong, ask the
+        *same* conda that launches Chargemol for the environment's real prefix
+        (``CONDA_PREFIX``); since that conda successfully runs Chargemol, this is
+        guaranteed to resolve to the right place.
+        """
         env_path = Path(environment).expanduser()
         if env_path.is_absolute() or environment.startswith("~"):
-            prefix = env_path
-        elif conda:
-            # <base>/condabin/conda or <base>/bin/conda -> <base>/envs/<name>
-            prefix = Path(conda).expanduser().parent.parent / "envs" / environment
-        else:
-            return None
+            yield env_path
+            return
 
-        candidate = prefix / "share" / "chargemol" / "atomic_densities"
-        return candidate if candidate.is_dir() else None
+        if conda:
+            yield Path(conda).expanduser().parent.parent / "envs" / environment
+
+            try:
+                result = subprocess.run(
+                    [conda, "run", "-n", environment, "printenv", "CONDA_PREFIX"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                prefix = result.stdout.strip()
+                if result.returncode == 0 and prefix:
+                    yield Path(prefix)
+            except Exception as e:  # pragma: no cover - best-effort resolution
+                logger.debug(f"Could not ask conda for the env prefix: {e}")
 
     def _chargemol_job_control(self, input_filename, atomic_densities, periodicity):
         """Build Chargemol's job_control.txt contents for a (molecular) wfx run.

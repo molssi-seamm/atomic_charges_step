@@ -12,6 +12,10 @@ History
       is skipped in favor of the complete set bundled in the seamm-chargemol conda
       environment. This avoids a silent Chargemol failure when the configured
       directory exists but is not populated.
+    * The bundled densities are now located by asking conda for the environment's
+      actual prefix, not by deriving it from the conda executable's path. This
+      fixes non-standard/HPC conda layouts where the derivation was wrong, so the
+      densities silently were not found and DDEC6 failed.
 
 2026.7.13 -- Option to set the charges on the structure
     * New **Set as the atomic charges on the structure** option (default off).

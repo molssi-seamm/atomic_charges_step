@@ -130,6 +130,21 @@ def test_has_ddec6_densities(tmp_path):
     assert node._has_ddec6_densities(tmp_path / "missing") is False
 
 
+def test_conda_env_prefixes_absolute():
+    """An absolute environment path is used directly (no derivation)."""
+    node = atomic_charges_step.AtomicCharges()
+    assert list(node._conda_env_prefixes("", "/abs/env")) == [Path("/abs/env")]
+
+
+def test_conda_env_prefixes_guess_first():
+    """For a named env the cheap <base>/envs/<name> guess comes first."""
+    node = atomic_charges_step.AtomicCharges()
+    prefixes = list(
+        node._conda_env_prefixes("/opt/mc/condabin/conda", "seamm-chargemol")
+    )
+    assert prefixes[0] == Path("/opt/mc/envs/seamm-chargemol")
+
+
 def test_chargemol_failure_message_quotes_log(tmp_path):
     """The failure message quotes Chargemol's real log, not the empty stdout."""
     (tmp_path / "orca.output").write_text(
