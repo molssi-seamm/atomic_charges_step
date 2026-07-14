@@ -9,6 +9,8 @@ History
       provides; an integer caps it. This matters most when running directly on a
       machine (no queuing system), where Chargemol's OpenMP would otherwise use
       every core on the node.
+    * The output now reports the number of threads used, and a line at the end of
+      the step with the wall-clock time in seconds.
 
 2026.7.13.1 -- Bugfix: clearer Chargemol failures; skip incomplete densities
     * When Chargemol fails to produce charges, the error now quotes its real log

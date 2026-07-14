@@ -37,6 +37,7 @@ import pprint  # noqa: F401
 import shutil
 import subprocess
 import textwrap
+import time
 
 import numpy as np
 from tabulate import tabulate
@@ -189,6 +190,7 @@ class AtomicCharges(seamm.Node):
             The next node object in the flowchart.
         """
         next_node = super().run(printer)
+        t0 = time.time()
 
         # Get the values of the parameters, dereferencing any variables
         P = self.parameters.current_values_to_dict(
@@ -275,6 +277,13 @@ class AtomicCharges(seamm.Node):
 
         # Analysis / saving of results, variables, tables
         self.analyze(P=P, results=results)
+
+        printer.important(
+            __(
+                f"Atomic Charges step took {time.time() - t0:.1f} seconds.",
+                indent=self.indent,
+            )
+        )
 
         return next_node
 
@@ -720,6 +729,13 @@ class AtomicCharges(seamm.Node):
         # matters most off a queuing system, where OpenMP would otherwise use
         # every core on the machine.
         n_threads = self._n_threads()
+        printer.important(
+            __(
+                f"Running {section} on {n_threads} "
+                f"thread{'s' if n_threads != 1 else ''} (OMP_NUM_THREADS).",
+                indent=self.indent + 4 * " ",
+            )
+        )
 
         result = executor.run(
             cmd=cmd,
