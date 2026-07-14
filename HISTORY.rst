@@ -2,6 +2,14 @@
 History
 =======
 
+2026.7.14 -- Control Chargemol's core (OpenMP thread) count
+    * The ``ncores`` option in the ``[atomic-charges-step]`` configuration is now
+      wired to Chargemol via ``OMP_NUM_THREADS`` (it was previously documented but
+      had no effect). 'available' (default) uses all cores the job/machine
+      provides; an integer caps it. This matters most when running directly on a
+      machine (no queuing system), where Chargemol's OpenMP would otherwise use
+      every core on the node.
+
 2026.7.13.1 -- Bugfix: clearer Chargemol failures; skip incomplete densities
     * When Chargemol fails to produce charges, the error now quotes its real log
       (``<input>.output``) instead of the empty ``stdout.txt`` -- so causes like

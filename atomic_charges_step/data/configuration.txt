@@ -1,6 +1,8 @@
 [atomic-charges-step]
-# How many cores to use for the charge-analysis programs.
-# Default: use all available cores up to the maximum specified here.
+# How many cores (OpenMP threads, via OMP_NUM_THREADS) the charge-analysis
+# programs (e.g. Chargemol) may use. 'available' (the default) uses all the cores
+# the job/machine provides; give an integer to cap it. This matters most off a
+# queuing system, where the program would otherwise grab every core on the node.
 # ncores = available
 
 # Print the per-atom charges to the output for systems with no more than this
