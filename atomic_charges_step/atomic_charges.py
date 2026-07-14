@@ -35,6 +35,7 @@ import os
 from pathlib import Path
 import pprint  # noqa: F401
 import shutil
+import subprocess
 import textwrap
 
 import numpy as np
@@ -440,6 +441,10 @@ class AtomicCharges(seamm.Node):
         directory = Path(self.directory)
         (directory / src.name).write_bytes(src.read_bytes())
 
+        # Chargemol writes its actual log to '<input-stem>.output' (NOT stdout,
+        # which stays empty), so capture that too for diagnostics.
+        log_name = Path(src.name).with_suffix(".output").name
+
         # 3-periodic for a periodic configuration, molecular otherwise.
         periodic = getattr(configuration, "periodicity", 0) == 3
         job_control = self._chargemol_job_control(
@@ -455,11 +460,45 @@ class AtomicCharges(seamm.Node):
             return_files=[
                 "stdout.txt",
                 "stderr.txt",
+                log_name,
                 "DDEC6_even_tempered_net_atomic_charges.xyz",
             ],
         )
         charge_file = directory / "DDEC6_even_tempered_net_atomic_charges.xyz"
+        if not charge_file.exists():
+            raise RuntimeError(self._chargemol_failure_message(directory, log_name))
         return self._parse_ddec6_charges(charge_file, configuration.n_atoms)
+
+    @staticmethod
+    def _chargemol_failure_message(directory, log_name):
+        """A diagnostic message when Chargemol produced no DDEC6 charges.
+
+        Chargemol writes its real log to ``<input-stem>.output`` (stdout stays
+        empty), so quote the end of that file (and stderr) rather than pointing
+        at the empty stdout.txt.
+        """
+        directory = Path(directory)
+        parts = [
+            "Chargemol ran but did not produce "
+            "DDEC6_even_tempered_net_atomic_charges.xyz (the DDEC6 charges)."
+        ]
+        log = directory / log_name
+        if log.exists():
+            tail = "\n".join(log.read_text().splitlines()[-25:]).rstrip()
+            parts.append(f"End of Chargemol's log ({log_name}):\n{tail}")
+        else:
+            parts.append(
+                f"Chargemol wrote no log ({log_name}), so it likely failed to "
+                "start -- check the atomic-densities directory path in "
+                "job_control.txt and that the .wfx is valid."
+            )
+        err = directory / "stderr.txt"
+        if err.exists():
+            text = err.read_text().strip()
+            # The bare IEEE_UNDERFLOW/DENORMAL note is normal Fortran-exit noise.
+            if text and "IEEE_" not in text:
+                parts.append(f"stderr:\n{text[-1000:]}")
+        return "\n\n".join(parts)
 
     def _atomic_densities_path(self, P):
         """Resolve the Chargemol atomic-densities directory.
@@ -479,7 +518,11 @@ class AtomicCharges(seamm.Node):
         """
         raw = os.path.expandvars(P["atomic densities directory"])
         configured = Path(raw).expanduser()
-        if configured.is_dir():
+        # Require the directory to actually contain DDEC6 reference densities
+        # (c2_*.txt), not merely exist: an empty/incomplete directory makes
+        # Chargemol start and then die with "Could not find a suitable reference
+        # density". If it is incomplete, prefer the complete conda-bundled set.
+        if self._has_ddec6_densities(configured):
             return configured
 
         from_env = self._conda_atomic_densities()
@@ -487,6 +530,14 @@ class AtomicCharges(seamm.Node):
             return from_env
 
         return configured
+
+    @staticmethod
+    def _has_ddec6_densities(path):
+        """Whether `path` is a directory holding DDEC6 reference densities."""
+        try:
+            return path.is_dir() and next(path.glob("c2_*.txt"), None) is not None
+        except OSError:
+            return False
 
     def _conda_atomic_densities(self):
         """The atomic-densities directory bundled in the seamm-chargemol conda
@@ -506,17 +557,42 @@ class AtomicCharges(seamm.Node):
         if not environment:
             return None
 
+        for prefix in self._conda_env_prefixes(conda, environment):
+            candidate = Path(prefix) / "share" / "chargemol" / "atomic_densities"
+            if candidate.is_dir():
+                return candidate
+        return None
+
+    def _conda_env_prefixes(self, conda, environment):
+        """Candidate filesystem prefixes for the conda environment, in order.
+
+        First the cheap guess from the layout ``<base>/envs/<name>`` (or the
+        environment itself if it is already an absolute path). Then, so it works
+        on non-standard/HPC conda layouts where that guess is wrong, ask the
+        *same* conda that launches Chargemol for the environment's real prefix
+        (``CONDA_PREFIX``); since that conda successfully runs Chargemol, this is
+        guaranteed to resolve to the right place.
+        """
         env_path = Path(environment).expanduser()
         if env_path.is_absolute() or environment.startswith("~"):
-            prefix = env_path
-        elif conda:
-            # <base>/condabin/conda or <base>/bin/conda -> <base>/envs/<name>
-            prefix = Path(conda).expanduser().parent.parent / "envs" / environment
-        else:
-            return None
+            yield env_path
+            return
 
-        candidate = prefix / "share" / "chargemol" / "atomic_densities"
-        return candidate if candidate.is_dir() else None
+        if conda:
+            yield Path(conda).expanduser().parent.parent / "envs" / environment
+
+            try:
+                result = subprocess.run(
+                    [conda, "run", "-n", environment, "printenv", "CONDA_PREFIX"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                prefix = result.stdout.strip()
+                if result.returncode == 0 and prefix:
+                    yield Path(prefix)
+            except Exception as e:  # pragma: no cover - best-effort resolution
+                logger.debug(f"Could not ask conda for the env prefix: {e}")
 
     def _chargemol_job_control(self, input_filename, atomic_densities, periodicity):
         """Build Chargemol's job_control.txt contents for a (molecular) wfx run.

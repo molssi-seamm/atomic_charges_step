@@ -2,6 +2,21 @@
 History
 =======
 
+2026.7.13.1 -- Bugfix: clearer Chargemol failures; skip incomplete densities
+    * When Chargemol fails to produce charges, the error now quotes its real log
+      (``<input>.output``) instead of the empty ``stdout.txt`` -- so causes like
+      "Could not find a suitable reference density" are shown directly. Chargemol
+      writes its diagnostics to that log, not to stdout.
+    * The atomic-densities directory is now used only if it actually contains the
+      DDEC6 reference densities (``c2_*.txt``); an empty or incomplete directory
+      is skipped in favor of the complete set bundled in the seamm-chargemol conda
+      environment. This avoids a silent Chargemol failure when the configured
+      directory exists but is not populated.
+    * The bundled densities are now located by asking conda for the environment's
+      actual prefix, not by deriving it from the conda executable's path. This
+      fixes non-standard/HPC conda layouts where the derivation was wrong, so the
+      densities silently were not found and DDEC6 failed.
+
 2026.7.13 -- Option to set the charges on the structure
     * New **Set as the atomic charges on the structure** option (default off).
       When on, the computed charges are also written to the structure's standard

@@ -121,6 +121,54 @@ def test_store_charges_apply_to_structure():
     assert cfg.atoms["charge"] == [-0.8, 0.4, 0.4]
 
 
+def test_has_ddec6_densities(tmp_path):
+    """A directory counts as densities only if it holds c2_*.txt files."""
+    node = atomic_charges_step.AtomicCharges
+    assert node._has_ddec6_densities(tmp_path) is False  # empty
+    (tmp_path / "c2_006_006_006_500_100.txt").write_text("x")
+    assert node._has_ddec6_densities(tmp_path) is True
+    assert node._has_ddec6_densities(tmp_path / "missing") is False
+
+
+def test_conda_env_prefixes_absolute():
+    """An absolute environment path is used directly (no derivation)."""
+    node = atomic_charges_step.AtomicCharges()
+    assert list(node._conda_env_prefixes("", "/abs/env")) == [Path("/abs/env")]
+
+
+def test_conda_env_prefixes_guess_first():
+    """For a named env the cheap <base>/envs/<name> guess comes first."""
+    node = atomic_charges_step.AtomicCharges()
+    prefixes = list(
+        node._conda_env_prefixes("/opt/mc/condabin/conda", "seamm-chargemol")
+    )
+    assert prefixes[0] == Path("/opt/mc/envs/seamm-chargemol")
+
+
+def test_chargemol_failure_message_quotes_log(tmp_path):
+    """The failure message quotes Chargemol's real log, not the empty stdout."""
+    (tmp_path / "orca.output").write_text(
+        "...\nc2_006_006_006_500_100.txt\n"
+        "Could not find a suitable reference density. Program will terminate.\n"
+    )
+    (tmp_path / "stderr.txt").write_text("Note: ... IEEE_UNDERFLOW_FLAG IEEE_DENORMAL")
+    msg = atomic_charges_step.AtomicCharges._chargemol_failure_message(
+        tmp_path, "orca.output"
+    )
+    assert "Could not find a suitable reference density" in msg
+    assert "orca.output" in msg
+    # The benign IEEE floating-point note is not surfaced as an error.
+    assert "IEEE_" not in msg
+
+
+def test_chargemol_failure_message_no_log(tmp_path):
+    """When Chargemol wrote no log it is flagged as a likely startup failure."""
+    msg = atomic_charges_step.AtomicCharges._chargemol_failure_message(
+        tmp_path, "orca.output"
+    )
+    assert "failed to start" in msg
+
+
 def test_chargemol_job_control():
     """The molecular wfx job_control has the right tags and a trailing slash."""
     node = atomic_charges_step.AtomicCharges()
