@@ -130,6 +130,31 @@ def test_has_ddec6_densities(tmp_path):
     assert node._has_ddec6_densities(tmp_path / "missing") is False
 
 
+def test_n_threads_resolution():
+    """ncores resolves to OMP threads: 'available' -> all cores, int -> capped."""
+    import seamm_exec
+
+    available = max(
+        1, int(seamm_exec.computational_environment().get("NTASKS", 1) or 1)
+    )
+    node = atomic_charges_step.AtomicCharges()
+    node.global_options = {"ncores": "available"}
+
+    node.options = {"ncores": "available"}
+    assert node._n_threads() == available
+
+    node.options = {"ncores": "1"}
+    assert node._n_threads() == 1
+
+    node.options = {"ncores": "2"}
+    assert node._n_threads() == min(available, 2)
+
+    # A global cap tightens it further.
+    node.global_options = {"ncores": "1"}
+    node.options = {"ncores": "available"}
+    assert node._n_threads() == 1
+
+
 def test_conda_env_prefixes_absolute():
     """An absolute environment path is used directly (no derivation)."""
     node = atomic_charges_step.AtomicCharges()

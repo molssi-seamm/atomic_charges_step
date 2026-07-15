@@ -37,6 +37,7 @@ import pprint  # noqa: F401
 import shutil
 import subprocess
 import textwrap
+import time
 
 import numpy as np
 from tabulate import tabulate
@@ -125,6 +126,19 @@ class AtomicCharges(seamm.Node):
 
         parser.add_argument(
             parser_name,
+            "--ncores",
+            default="available",
+            help=(
+                "How many cores (OpenMP threads) the charge-analysis program "
+                "(e.g. Chargemol) may use, via OMP_NUM_THREADS. 'available' (the "
+                "default) uses all the cores the job/machine provides; give an "
+                "integer to cap it. Setting this matters most off a queuing "
+                "system, where the program would otherwise grab every core."
+            ),
+        )
+
+        parser.add_argument(
+            parser_name,
             "--max-atoms-to-print",
             default=20,
             help=(
@@ -176,6 +190,7 @@ class AtomicCharges(seamm.Node):
             The next node object in the flowchart.
         """
         next_node = super().run(printer)
+        t0 = time.time()
 
         # Get the values of the parameters, dereferencing any variables
         P = self.parameters.current_values_to_dict(
@@ -262,6 +277,13 @@ class AtomicCharges(seamm.Node):
 
         # Analysis / saving of results, variables, tables
         self.analyze(P=P, results=results)
+
+        printer.important(
+            __(
+                f"Atomic Charges step took {time.time() - t0:.1f} seconds.",
+                indent=self.indent,
+            )
+        )
 
         return next_node
 
@@ -703,7 +725,17 @@ class AtomicCharges(seamm.Node):
         executor = self.flowchart.executor
         config = self._program_config(section)
 
-        seamm_exec.computational_environment()  # set resource limits
+        # Chargemol/Bader are OpenMP: cap the threads via OMP_NUM_THREADS. This
+        # matters most off a queuing system, where OpenMP would otherwise use
+        # every core on the machine.
+        n_threads = self._n_threads()
+        printer.important(
+            __(
+                f"Running {section} on {n_threads} "
+                f"thread{'s' if n_threads != 1 else ''} (OMP_NUM_THREADS).",
+                indent=self.indent + 4 * " ",
+            )
+        )
 
         result = executor.run(
             cmd=cmd,
@@ -713,10 +745,38 @@ class AtomicCharges(seamm.Node):
             return_files=return_files,
             in_situ=True,
             shell=True,
+            env={"OMP_NUM_THREADS": str(n_threads)},
         )
         if not result:
             raise RuntimeError(f"There was an error running {section}.")
         return result
+
+    def _n_threads(self):
+        """Resolve the number of OpenMP threads for the charge program from the
+        ``ncores`` option, capped by what the environment provides and by any
+        global SEAMM ``ncores`` limit. Mirrors the ORCA step's %pal resolution."""
+        ce = seamm_exec.computational_environment()
+        available = max(1, int(ce.get("NTASKS", 1) or 1))
+
+        ncores_opt = str(self.options.get("ncores", "available")).strip().lower()
+        if ncores_opt in ("available", "default", "all", ""):
+            n = available
+        else:
+            try:
+                n = min(available, int(ncores_opt))
+            except ValueError:
+                n = available
+
+        global_ncores = (
+            str(self.global_options.get("ncores", "available")).strip().lower()
+        )
+        if global_ncores not in ("available", "default", "all", ""):
+            try:
+                n = min(n, int(global_ncores))
+            except ValueError:
+                pass
+
+        return max(1, n)
 
     def _program_config(self, section):
         """Resolve the executor configuration for the charge-analysis program.
