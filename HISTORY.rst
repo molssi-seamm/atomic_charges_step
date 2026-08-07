@@ -14,6 +14,11 @@ History
       the structure's actual charge (already known from the configuration)
       before handing the file to Chargemol, working around the ORCA bug
       rather than waiting on a fix from the vendor.
+    * Right-clicking the node in the graphical flowchart editor did nothing --
+      no Edit/Delete menu -- because the Tk node never overrode ``right_click``
+      to actually post the popup menu (the base class only builds it; a
+      subclass must call ``tk_popup`` itself). Added the same ``right_click``
+      override the cookiecutter template and other steps already use.
 
 2026.7.14 -- Control Chargemol's core (OpenMP thread) count
     * The ``ncores`` option in the ``[atomic-charges-step]`` configuration is now
