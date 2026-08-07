@@ -15,6 +15,15 @@ Status:
   validated end-to-end (g09 -> wfx -> Chargemol -> parse -> store). ORCA feeds the
   same path: its Energy substep writes ``orca.wfx`` via orca_2aim, validated
   end-to-end (ORCA -> wfx -> Chargemol).
+* ORCA's ``orca_2aim`` always writes ``<Net Charge> 0.0`` in the ``.wfx``,
+  regardless of the molecule's actual charge (confirmed on ORCA 6.1.1, for both
+  a cation and an anion) -- right only by coincidence for a neutral system.
+  Chargemol cross-checks that field against the (correct) electron count from
+  the wavefunction itself and refuses to run when they disagree, reporting
+  that "the quantum chemistry program ... contains a bug." ``_run_ddec6``
+  works around this by rewriting ``<Net Charge>`` to ``configuration.charge``
+  (which SEAMM already knows, and which is exactly what drove the preceding
+  ORCA job) before Chargemol ever sees the file.
 * The density handoff (``_locate_density``) reads a ``.wfx`` from the preceding
   step's directory (preferred), recognizing ``.cube`` as well. A uniform cube
   cannot represent the all-electron core, so molecular cube input is rejected;
@@ -34,6 +43,7 @@ import logging
 import os
 from pathlib import Path
 import pprint  # noqa: F401
+import re
 import shutil
 import subprocess
 import textwrap
@@ -435,6 +445,33 @@ class AtomicCharges(seamm.Node):
     # ------------------------------------------------------------------
     # DDEC6 / Chargemol backend
     # ------------------------------------------------------------------
+    _NET_CHARGE_RE = re.compile(r"<Net Charge>.*?</Net Charge>", re.DOTALL)
+
+    @classmethod
+    def _fix_wfx_net_charge(cls, text, charge):
+        """Return the ``.wfx`` text ``text`` with its ``<Net Charge>`` field
+        corrected to ``charge``.
+
+        ORCA's ``orca_2aim`` always writes ``<Net Charge> 0.0</Net Charge>``,
+        regardless of the molecule's actual charge -- confirmed on ORCA 6.1.1
+        for both a cation (Na+) and an anion (Cl-), even though the wfx's own
+        ``<Number of Electrons>``/orbital occupations (what Chargemol actually
+        derives the electron count from) are correct. Chargemol cross-checks
+        the two and refuses to run when they disagree ("the quantum chemistry
+        program you used to generate the wfx file contains a bug"). ``charge``
+        is exactly what drove the preceding quantum-chemistry job that
+        produced this wfx (``configuration.charge``), so it is trustworthy
+        even when the file's own header is not.
+        """
+        replacement = f"<Net Charge>\n {int(round(charge))}\n</Net Charge>"
+        fixed, count = cls._NET_CHARGE_RE.subn(replacement, text, count=1)
+        if count == 0:
+            raise RuntimeError(
+                "Could not find a '<Net Charge>' field in the .wfx to correct "
+                "before running Chargemol; the file format may have changed."
+            )
+        return fixed
+
     def _run_ddec6(self, P, density, configuration):
         """Run Chargemol to get DDEC6 charges. Returns a list of charges.
 
@@ -459,9 +496,10 @@ class AtomicCharges(seamm.Node):
         src = Path(density["path"])
 
         # Chargemol reads the density file named in job_control.txt from the run
-        # directory, so place a copy there.
+        # directory, so place a (charge-corrected) copy there.
         directory = Path(self.directory)
-        (directory / src.name).write_bytes(src.read_bytes())
+        text = self._fix_wfx_net_charge(src.read_text(), configuration.charge)
+        (directory / src.name).write_text(text)
 
         # Chargemol writes its actual log to '<input-stem>.output' (NOT stdout,
         # which stays empty), so capture that too for diagnostics.

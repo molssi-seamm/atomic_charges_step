@@ -2,6 +2,19 @@
 History
 =======
 
+2026.8.7 -- Bugfix: DDEC6 now works for charged systems (ions)
+    * DDEC6 via Chargemol previously failed for any charged structure (an ion,
+      or a charged BSSE fragment): ORCA's ``orca_2aim`` always writes
+      ``<Net Charge> 0.0`` in the ``.wfx`` it produces, regardless of the
+      molecule's actual charge -- confirmed on ORCA 6.1.1 for both a cation
+      (Na+) and an anion (Cl-), even though the wfx's own electron count is
+      correct. Chargemol cross-checks the two and refuses to run, reporting
+      "the quantum chemistry program you used to generate the wfx file
+      contains a bug." This step now corrects the ``<Net Charge>`` field to
+      the structure's actual charge (already known from the configuration)
+      before handing the file to Chargemol, working around the ORCA bug
+      rather than waiting on a fix from the vendor.
+
 2026.7.14 -- Control Chargemol's core (OpenMP thread) count
     * The ``ncores`` option in the ``[atomic-charges-step]`` configuration is now
       wired to Chargemol via ``OMP_NUM_THREADS`` (it was previously documented but
