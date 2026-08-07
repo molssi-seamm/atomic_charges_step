@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>History &#8212; SEAMM Atomic Charges Plug-in 2026.7.14 documentation</title>
+    <title>History &#8212; SEAMM Atomic Charges Plug-in 2026.8.7 documentation</title>
   
   
   
@@ -41,7 +41,7 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="_static/documentation_options.js?v=6bce4073"></script>
+    <script src="_static/documentation_options.js?v=3b021491"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -54,7 +54,7 @@
     <link rel="prev" title="Development Team" href="authors.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.7.14" />
+  <meta name="docsearch:version" content="2026.8.7" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -511,6 +511,25 @@
   <section id="history">
 <h1>History<a class="headerlink" href="#history" title="Link to this heading">#</a></h1>
 <dl class="simple">
+<dt>2026.8.7 – Bugfix: DDEC6 now works for charged systems (ions)</dt><dd><ul class="simple">
+<li><p>DDEC6 via Chargemol previously failed for any charged structure (an ion,
+or a charged BSSE fragment): ORCA’s <code class="docutils literal notranslate"><span class="pre">orca_2aim</span></code> always writes
+<code class="docutils literal notranslate"><span class="pre">&lt;Net</span> <span class="pre">Charge&gt;</span> <span class="pre">0.0</span></code> in the <code class="docutils literal notranslate"><span class="pre">.wfx</span></code> it produces, regardless of the
+molecule’s actual charge – confirmed on ORCA 6.1.1 for both a cation
+(Na+) and an anion (Cl-), even though the wfx’s own electron count is
+correct. Chargemol cross-checks the two and refuses to run, reporting
+“the quantum chemistry program you used to generate the wfx file
+contains a bug.” This step now corrects the <code class="docutils literal notranslate"><span class="pre">&lt;Net</span> <span class="pre">Charge&gt;</span></code> field to
+the structure’s actual charge (already known from the configuration)
+before handing the file to Chargemol, working around the ORCA bug
+rather than waiting on a fix from the vendor.</p></li>
+<li><p>Right-clicking the node in the graphical flowchart editor did nothing –
+no Edit/Delete menu – because the Tk node never overrode <code class="docutils literal notranslate"><span class="pre">right_click</span></code>
+to actually post the popup menu (the base class only builds it; a
+subclass must call <code class="docutils literal notranslate"><span class="pre">tk_popup</span></code> itself). Added the same <code class="docutils literal notranslate"><span class="pre">right_click</span></code>
+override the cookiecutter template and other steps already use.</p></li>
+</ul>
+</dd>
 <dt>2026.7.14 – Control Chargemol’s core (OpenMP thread) count</dt><dd><ul class="simple">
 <li><p>The <code class="docutils literal notranslate"><span class="pre">ncores</span></code> option in the <code class="docutils literal notranslate"><span class="pre">[atomic-charges-step]</span></code> configuration is now
 wired to Chargemol via <code class="docutils literal notranslate"><span class="pre">OMP_NUM_THREADS</span></code> (it was previously documented but

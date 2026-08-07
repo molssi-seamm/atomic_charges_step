@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.7.14 documentation</title>
+    <title>atomic_charges_step.atomic_charges &#8212; SEAMM Atomic Charges Plug-in 2026.8.7 documentation</title>
   
   
   
@@ -40,7 +40,7 @@
   <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=90905a2f556bf617f1a9" />
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=90905a2f556bf617f1a9" />
 
-    <script src="../../_static/documentation_options.js?v=6bce4073"></script>
+    <script src="../../_static/documentation_options.js?v=3b021491"></script>
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -52,7 +52,7 @@
     <link rel="search" title="Search" href="../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="2026.7.14" />
+  <meta name="docsearch:version" content="2026.8.7" />
   
     
     <script src="../../_static/searchtools.js"></script>
@@ -508,6 +508,15 @@
 <span class="sd">  validated end-to-end (g09 -&gt; wfx -&gt; Chargemol -&gt; parse -&gt; store). ORCA feeds the</span>
 <span class="sd">  same path: its Energy substep writes ``orca.wfx`` via orca_2aim, validated</span>
 <span class="sd">  end-to-end (ORCA -&gt; wfx -&gt; Chargemol).</span>
+<span class="sd">* ORCA&#39;s ``orca_2aim`` always writes ``&lt;Net Charge&gt; 0.0`` in the ``.wfx``,</span>
+<span class="sd">  regardless of the molecule&#39;s actual charge (confirmed on ORCA 6.1.1, for both</span>
+<span class="sd">  a cation and an anion) -- right only by coincidence for a neutral system.</span>
+<span class="sd">  Chargemol cross-checks that field against the (correct) electron count from</span>
+<span class="sd">  the wavefunction itself and refuses to run when they disagree, reporting</span>
+<span class="sd">  that &quot;the quantum chemistry program ... contains a bug.&quot; ``_run_ddec6``</span>
+<span class="sd">  works around this by rewriting ``&lt;Net Charge&gt;`` to ``configuration.charge``</span>
+<span class="sd">  (which SEAMM already knows, and which is exactly what drove the preceding</span>
+<span class="sd">  ORCA job) before Chargemol ever sees the file.</span>
 <span class="sd">* The density handoff (``_locate_density``) reads a ``.wfx`` from the preceding</span>
 <span class="sd">  step&#39;s directory (preferred), recognizing ``.cube`` as well. A uniform cube</span>
 <span class="sd">  cannot represent the all-electron core, so molecular cube input is rejected;</span>
@@ -527,6 +536,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pprint</span>  <span class="c1"># noqa: F401</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">textwrap</span>
@@ -939,6 +949,33 @@
     <span class="c1"># ------------------------------------------------------------------</span>
     <span class="c1"># DDEC6 / Chargemol backend</span>
     <span class="c1"># ------------------------------------------------------------------</span>
+    <span class="n">_NET_CHARGE_RE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;&lt;Net Charge&gt;.*?&lt;/Net Charge&gt;&quot;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">DOTALL</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_fix_wfx_net_charge</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">charge</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the ``.wfx`` text ``text`` with its ``&lt;Net Charge&gt;`` field</span>
+<span class="sd">        corrected to ``charge``.</span>
+
+<span class="sd">        ORCA&#39;s ``orca_2aim`` always writes ``&lt;Net Charge&gt; 0.0&lt;/Net Charge&gt;``,</span>
+<span class="sd">        regardless of the molecule&#39;s actual charge -- confirmed on ORCA 6.1.1</span>
+<span class="sd">        for both a cation (Na+) and an anion (Cl-), even though the wfx&#39;s own</span>
+<span class="sd">        ``&lt;Number of Electrons&gt;``/orbital occupations (what Chargemol actually</span>
+<span class="sd">        derives the electron count from) are correct. Chargemol cross-checks</span>
+<span class="sd">        the two and refuses to run when they disagree (&quot;the quantum chemistry</span>
+<span class="sd">        program you used to generate the wfx file contains a bug&quot;). ``charge``</span>
+<span class="sd">        is exactly what drove the preceding quantum-chemistry job that</span>
+<span class="sd">        produced this wfx (``configuration.charge``), so it is trustworthy</span>
+<span class="sd">        even when the file&#39;s own header is not.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">replacement</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&lt;Net Charge&gt;</span><span class="se">\n</span><span class="s2"> </span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">charge</span><span class="p">))</span><span class="si">}</span><span class="se">\n</span><span class="s2">&lt;/Net Charge&gt;&quot;</span>
+        <span class="n">fixed</span><span class="p">,</span> <span class="n">count</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_NET_CHARGE_RE</span><span class="o">.</span><span class="n">subn</span><span class="p">(</span><span class="n">replacement</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">count</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="s2">&quot;Could not find a &#39;&lt;Net Charge&gt;&#39; field in the .wfx to correct &quot;</span>
+                <span class="s2">&quot;before running Chargemol; the file format may have changed.&quot;</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">fixed</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_run_ddec6</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">,</span> <span class="n">density</span><span class="p">,</span> <span class="n">configuration</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Run Chargemol to get DDEC6 charges. Returns a list of charges.</span>
 
@@ -963,9 +1000,10 @@
         <span class="n">src</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">density</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">])</span>
 
         <span class="c1"># Chargemol reads the density file named in job_control.txt from the run</span>
-        <span class="c1"># directory, so place a copy there.</span>
+        <span class="c1"># directory, so place a (charge-corrected) copy there.</span>
         <span class="n">directory</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">directory</span><span class="p">)</span>
-        <span class="p">(</span><span class="n">directory</span> <span class="o">/</span> <span class="n">src</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">())</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fix_wfx_net_charge</span><span class="p">(</span><span class="n">src</span><span class="o">.</span><span class="n">read_text</span><span class="p">(),</span> <span class="n">configuration</span><span class="o">.</span><span class="n">charge</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">directory</span> <span class="o">/</span> <span class="n">src</span><span class="o">.</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
 
         <span class="c1"># Chargemol writes its actual log to &#39;&lt;input-stem&gt;.output&#39; (NOT stdout,</span>
         <span class="c1"># which stays empty), so capture that too for diagnostics.</span>
