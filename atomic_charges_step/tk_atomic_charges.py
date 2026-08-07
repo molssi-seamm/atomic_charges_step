@@ -87,6 +87,22 @@ class TkAtomicCharges(seamm.TkNode):
 
         self.reset_dialog()
 
+    def right_click(self, event):
+        """Handle the right-click event on the node.
+
+        Parameters
+        ----------
+        event : Tk Event
+
+        See Also
+        --------
+        TkAtomicCharges.edit
+        """
+        super().right_click(event)
+        self.popup_menu.add_command(label="Edit..", command=self.edit)
+
+        self.popup_menu.tk_popup(event.x_root, event.y_root, 0)
+
     def _allowed_methods(self, source):
         """The charge methods to offer given where the density comes from.
 

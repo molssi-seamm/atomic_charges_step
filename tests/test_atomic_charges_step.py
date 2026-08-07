@@ -208,6 +208,40 @@ def test_chargemol_job_control():
     assert "DDEC6" in text
 
 
+def test_fix_wfx_net_charge_orca_style():
+    """orca_2aim always writes 0.0 for <Net Charge>, regardless of the actual
+    charge -- confirmed on a real ORCA 6.1.1 Na+ run. It must be corrected to
+    the true (nonzero) charge before Chargemol sees the file."""
+    text = (
+        "<Net Charge> \n0.0 \n</Net Charge> \n\n<Number of Electrons>\n10\n"
+        "</Number of Electrons>\n"
+    )
+    fixed = atomic_charges_step.AtomicCharges._fix_wfx_net_charge(text, 1)
+    assert "<Net Charge>\n 1\n</Net Charge>" in fixed
+    assert "0.0" not in fixed
+    # Untouched fields survive.
+    assert "<Number of Electrons>\n10\n</Number of Electrons>" in fixed
+
+
+def test_fix_wfx_net_charge_gaussian_style_neutral():
+    """A Gaussian-style wfx with the (already correct) neutral charge is
+    fixed up to the same value -- a no-op in effect."""
+    text = "<Net Charge>\n 0\n</Net Charge>\n"
+    fixed = atomic_charges_step.AtomicCharges._fix_wfx_net_charge(text, 0)
+    assert fixed == "<Net Charge>\n 0\n</Net Charge>\n"
+
+
+def test_fix_wfx_net_charge_negative():
+    text = "<Net Charge>\n0.0\n</Net Charge>\n"
+    fixed = atomic_charges_step.AtomicCharges._fix_wfx_net_charge(text, -1)
+    assert "<Net Charge>\n -1\n</Net Charge>" in fixed
+
+
+def test_fix_wfx_net_charge_missing_field_raises():
+    with pytest.raises(RuntimeError, match="Net Charge"):
+        atomic_charges_step.AtomicCharges._fix_wfx_net_charge("no such field here", 1)
+
+
 def test_parse_ddec6_charges(tmp_path):
     """Parse the 5th column of a DDEC6 net-atomic-charges file."""
     f = tmp_path / "DDEC6_even_tempered_net_atomic_charges.xyz"
@@ -270,3 +304,44 @@ def test_ddec6_water_end_to_end(tmp_path):
     assert charges[0] == pytest.approx(-0.8, abs=0.1)  # O
     assert charges[1] == pytest.approx(0.4, abs=0.1)  # H
     assert charges[2] == pytest.approx(0.4, abs=0.1)  # H
+
+
+@pytest.mark.skipif(
+    _CHARGEMOL is None,
+    reason="the seamm-chargemol conda environment is not installed",
+)
+def test_ddec6_charged_ion_end_to_end(tmp_path):
+    """Full external chain for a CHARGED system: without the <Net Charge> fix
+    Chargemol refuses to run at all (it cross-checks the wfx's own electron
+    count and dies with "the quantum chemistry program ... contains a bug").
+    Uses a real ORCA 6.1.1 / orca_2aim Na+ wfx (which -- confirmed -- always
+    writes <Net Charge> 0.0, wrong for this cation) to regression-test the fix
+    against the actual bug, not just a synthetic string.
+    """
+    conda, densities = _CHARGEMOL
+    node = atomic_charges_step.AtomicCharges()
+    text = (DATA / "charged" / "na_cation_orca.wfx").read_text()
+    assert "<Net Charge> \n0.0" in text  # the bug, still present in the fixture
+    fixed = node._fix_wfx_net_charge(text, 1)
+    (tmp_path / "orca.wfx").write_text(fixed)
+    (tmp_path / "job_control.txt").write_text(
+        node._chargemol_job_control(
+            input_filename="orca.wfx",
+            atomic_densities=str(densities),
+            periodicity=(False, False, False),
+        )
+    )
+    subprocess.run(
+        [conda, "run", "-n", "seamm-chargemol", "chargemol"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    charge_file = tmp_path / "DDEC6_even_tempered_net_atomic_charges.xyz"
+    assert charge_file.exists(), (
+        "Chargemol produced no charges -- the <Net Charge> fix did not take "
+        "effect, or Chargemol itself changed behavior."
+    )
+    charges = node._parse_ddec6_charges(charge_file, 1)
+    assert charges[0] == pytest.approx(1.0, abs=1e-3)
