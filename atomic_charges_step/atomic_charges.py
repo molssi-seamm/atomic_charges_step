@@ -39,6 +39,7 @@ Status:
 import configparser
 import csv
 import importlib
+import json
 import logging
 import os
 from pathlib import Path
@@ -60,6 +61,8 @@ from seamm_util import ureg, Q_, Configuration  # noqa: F401
 import seamm_util.printing as printing
 from seamm_util.printing import FormattedText as __
 
+#: The record of which density a wavefunction file holds, written beside it
+WFX_DENSITY_FILE = "wfx_density.json"
 logger = logging.getLogger(__name__)
 job = printing.getPrinter()
 printer = printing.getPrinter("Atomic Charges")
@@ -220,6 +223,12 @@ class AtomicCharges(seamm.Node):
 
         # Find the density file(s) the upstream QM step produced
         density = self._locate_density(P)
+        which = density.get("density")
+        if which is not None:
+            text = f"The density is the {which} density"
+            if density.get("method"):
+                text += f" of {density['method']}"
+            printer.important(__(text + ".", indent=self.indent + 4 * " "))
 
         # Which methods to run
         if P["method"] == "DDEC6 and Bader":
@@ -253,7 +262,7 @@ class AtomicCharges(seamm.Node):
 
             self._cite_method(method)
 
-            label = self._charge_label(P, method)
+            label = self._charge_label(P, method, which)
             apply_to_structure = P["apply to structure"] == "yes"
             self._store_charges(
                 configuration, label, charges, apply_to_structure=apply_to_structure
@@ -264,6 +273,7 @@ class AtomicCharges(seamm.Node):
                 "charges": charges,
                 "net charge": net,
                 "charge residual": residual,
+                "density": which,
             }
             msg = (
                 f"{method}: stored {n_atoms} charges as 'charges_{label}' "
@@ -345,11 +355,17 @@ class AtomicCharges(seamm.Node):
     # ------------------------------------------------------------------
     # Charge storage
     # ------------------------------------------------------------------
-    def _charge_label(self, P, method):
-        """Resolve the charge-set label for a given method."""
+    #: The suffix of the default label for charges from a density other than the
+    #: SCF one, so the two sets are never mixed silently
+    DENSITY_SUFFIX = {"MP2 relaxed": "MP2relaxed"}
+
+    def _charge_label(self, P, method, density=None):
+        """Resolve the charge-set label for a given method: by default the method,
+        with the density when it is not the SCF one (e.g. 'DDEC6_MP2relaxed')."""
         label = P["charge label"].strip()
         if label in ("", "<method>"):
-            return method
+            suffix = self.DENSITY_SUFFIX.get(density)
+            return method if suffix is None else f"{method}_{suffix}"
         return label
 
     def _store_charges(self, configuration, label, charges, apply_to_structure=False):
@@ -414,7 +430,7 @@ class AtomicCharges(seamm.Node):
             fmt = suffixes.get(path.suffix.lower())
             if fmt is None:
                 raise ValueError(f"Expected a .wfx or .cube density file, got {path}")
-            return {"format": fmt, "path": path}
+            return {"format": fmt, "path": path, **self._density_record(path)}
 
         # From the previous step in the flowchart. A molecular QM step writes its
         # wavefunction inside its own directory tree: the Gaussian step renames
@@ -432,7 +448,11 @@ class AtomicCharges(seamm.Node):
             for suffix, fmt in suffixes.items():
                 files = sorted(d.rglob(f"*{suffix}"), key=lambda p: p.stat().st_mtime)
                 if files:
-                    return {"format": fmt, "path": files[-1]}
+                    return {
+                        "format": fmt,
+                        "path": files[-1],
+                        **self._density_record(files[-1]),
+                    }
 
         raise FileNotFoundError(
             "Could not find an electron-density file (.wfx or .cube) from the "
@@ -441,6 +461,18 @@ class AtomicCharges(seamm.Node):
             "or 'Write the electron-density cube' in a preceding ORCA step, so this "
             "step has a density to partition."
         )
+
+    @staticmethod
+    def _density_record(path):
+        """Which density a density file holds, from the record the QM step wrote
+        beside it (``wfx_density.json``; ORCA writes one), e.g. {"density": "MP2
+        relaxed", "method": "REVDSD-PBEP86-D4/2021"}; empty if there is none."""
+        record = Path(path).parent / WFX_DENSITY_FILE
+        try:
+            data = json.loads(record.read_text())
+        except (OSError, ValueError):
+            return {}
+        return {k: data[k] for k in ("density", "method") if data.get(k)}
 
     # ------------------------------------------------------------------
     # DDEC6 / Chargemol backend
@@ -909,7 +941,12 @@ class AtomicCharges(seamm.Node):
                         "atomic charges": [float(q) for q in charges],
                         "net charge": float(data["net charge"]),
                         "charge residual": float(data["charge residual"]),
-                        "method": method,
+                        "method": method
+                        + (
+                            f" ({data['density']} density)"
+                            if data.get("density") not in (None, "SCF")
+                            else ""
+                        ),
                     },
                 )
             except Exception as e:  # pragma: no cover
@@ -923,8 +960,13 @@ class AtomicCharges(seamm.Node):
                 for i, (symbol, q) in enumerate(zip(symbols, charges), start=1):
                     writer.writerow([i, symbol, f"{q:.6f}"])
 
+            of = (
+                f" of the {data['density']} density"
+                if data.get("density") is not None
+                else ""
+            )
             text = (
-                f"{method} atomic charges (net charge {data['net charge']:.4f} e). "
+                f"{method} atomic charges{of} (net charge {data['net charge']:.4f} e). "
                 f"Written to {csv_path.name}."
             )
             printer.normal(__(text, indent=self.indent + 4 * " "))

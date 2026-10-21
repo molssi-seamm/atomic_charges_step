@@ -345,3 +345,32 @@ def test_ddec6_charged_ion_end_to_end(tmp_path):
     )
     charges = node._parse_ddec6_charges(charge_file, 1)
     assert charges[0] == pytest.approx(1.0, abs=1e-3)
+
+
+def test_density_record_and_label(tmp_path):
+    """The density a QM step records beside its wfx (ORCA's wfx_density.json) is
+    read, and charges of a non-SCF density get their own default label, so the two
+    sets are never mixed silently (science, 2026-10-21)."""
+    import json
+
+    from atomic_charges_step.atomic_charges import AtomicCharges, WFX_DENSITY_FILE
+
+    wfx = tmp_path / "orca.wfx"
+    wfx.write_text("")
+    assert AtomicCharges._density_record(wfx) == {}
+    (tmp_path / WFX_DENSITY_FILE).write_text(
+        json.dumps({"density": "MP2 relaxed", "method": "RI-MP2", "model": "x"})
+    )
+    assert AtomicCharges._density_record(wfx) == {
+        "density": "MP2 relaxed",
+        "method": "RI-MP2",
+    }
+
+    node = AtomicCharges()
+    P = {"charge label": "<method>"}
+    assert node._charge_label(P, "DDEC6") == "DDEC6"
+    assert node._charge_label(P, "DDEC6", "SCF") == "DDEC6"
+    assert node._charge_label(P, "DDEC6", "MP2 relaxed") == "DDEC6_MP2relaxed"
+    assert (
+        node._charge_label({"charge label": "mine"}, "DDEC6", "MP2 relaxed") == "mine"
+    )
