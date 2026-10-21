@@ -1,6 +1,13 @@
 =======
 History
 =======
+2026.10.21 -- The charges of the relaxed MP2 density are labeled as such
+    * When the preceding ORCA step wrote its wavefunction file from the relaxed MP2
+      density (orca-step 2026.10.21), the step now says which density it
+      partitioned, and stores the charges under their own default label,
+      charges_DDEC6_MP2relaxed, so they are never mixed silently with those of the SCF
+      density. The results' method says so too.
+    * A user guide.
 
 2026.8.7 -- Bugfix: DDEC6 now works for charged systems (ions)
     * DDEC6 via Chargemol previously failed for any charged structure (an ion,
